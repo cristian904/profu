@@ -4,107 +4,66 @@ FastAPI backend for the Profu application.
 
 ## Setup
 
-1. Install `uv` if you haven't already:
+### 1. Install Poetry
 
-**Windows (PowerShell - Recommended):**
+**Windows (PowerShell):**
 ```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+pip install poetry
 ```
 
-After installation, **restart your terminal** or run:
+Or use the official installer:
 ```powershell
-$env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-```
-
-**Alternative: Using pip (if you have Python installed):**
-```bash
-pip install uv
-```
-
-After installing with pip, you have several options:
-
-**Option A: Use python -m uv (Recommended - works immediately):**
-```bash
-python -m uv sync
-python -m uv run dev
-```
-
-**Option B: Use the wrapper script:**
-```bash
-# From the backend directory
-.\uv.bat sync
-.\uv.bat run dev
-```
-
-**Option C: Add to PATH manually:**
-1. Find your Python Scripts directory:
-   ```
-   %LOCALAPPDATA%\Packages\PythonSoftwareFoundation.Python.3.10_*\LocalCache\local-packages\Python310\Scripts
-   ```
-   Or run: `python -c "import site; import os; print(os.path.join(site.getusersitepackages().replace('site-packages', ''), 'Scripts'))"`
-2. Add it to your User PATH:
-   - Press `Win + R`, type `sysdm.cpl`, press Enter
-   - Go to "Advanced" tab → "Environment Variables"
-   - Under "User variables", select "Path" → "Edit"
-   - Click "New" and paste the Scripts directory path
-   - Click OK on all dialogs
-   - **Restart your terminal**
-
-**Linux/Mac:**
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
 ```
 
 **Verify installation:**
 ```bash
-uv --version
-# Or if not in PATH:
-python -m uv --version
+python -m poetry --version
 ```
 
-2. Install dependencies and create virtual environment:
+### 2. Install Dependencies
+
 ```bash
-# If uv is in PATH:
-uv sync
-
-# Or use python -m uv:
-python -m uv sync
-
-# Or use the wrapper script:
-.\uv.bat sync
+cd backend
+python -m poetry install
 ```
 
-3. Run the server:
+This will create a `.venv` folder in the project directory.
+
+### 3. Run the Server
+
+**Option 1: Use Poetry run (Recommended - No activation needed):**
 ```bash
-# Development mode (with auto-reload)
-uv run dev          # If in PATH
-python -m uv run dev  # Or use python -m
-.\uv.bat run dev     # Or use wrapper
-
-# Or production mode
-uv run start
-python -m uv run start
-.\uv.bat run start
-
-# Or use the serve alias
-uv run serve
-python -m uv run serve
-.\uv.bat run serve
+python -m poetry run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-You can also run commands directly:
-```bash
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
-python -m uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+**Option 2: Use the helper script:**
+```powershell
+.\run.ps1
 ```
 
-Or activate the virtual environment and run directly:
-```bash
-source .venv/bin/activate  # Linux/Mac
-# or
-.venv\Scripts\activate  # Windows
+**Option 3: Activate virtual environment (if execution policy allows):**
+```powershell
+# If you get execution policy error, use the helper script:
+.\activate.ps1
 
+# Or use Command Prompt instead:
+.venv\Scripts\activate.bat
+```
+
+**Option 4: Use Command Prompt (CMD) - No execution policy issues:**
+```cmd
+cd backend
+.venv\Scripts\activate.bat
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+## Quick Start
+
+```bash
+cd backend
+python -m poetry install
+python -m poetry run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 The API will be available at `http://localhost:8000`
@@ -114,3 +73,34 @@ The API will be available at `http://localhost:8000`
 - `GET /` - Health check
 - `GET /index` - Returns app description
 - `GET /docs` - Interactive API documentation (Swagger UI)
+- `GET /redoc` - Alternative API documentation (ReDoc)
+
+## Fixing PowerShell Execution Policy
+
+If you get an execution policy error when activating the venv:
+
+**Option 1: Use Poetry run (No activation needed)**
+```bash
+python -m poetry run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Option 2: Use the helper script**
+```powershell
+.\activate.ps1
+```
+
+**Option 3: Change execution policy (Requires Admin PowerShell)**
+```powershell
+# Run PowerShell as Administrator, then:
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+**Option 4: Use Command Prompt instead**
+CMD doesn't have execution policy restrictions.
+
+## Adding Dependencies
+
+```bash
+python -m poetry add package-name
+python -m poetry add --group dev package-name
+```
