@@ -1,106 +1,58 @@
-# Profu Backend
+# Backend Setup
 
-FastAPI backend for the Profu application.
+## Prerequisites
 
-## Setup
+- Python 3.13+
+- Poetry (for dependency management)
 
-### 1. Install Poetry
+## Installation
 
-**Windows (PowerShell):**
-```powershell
-pip install poetry
-```
-
-Or use the official installer:
-```powershell
-(Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | python -
-```
-
-**Verify installation:**
-```bash
-python -m poetry --version
-```
-
-### 2. Install Dependencies
-
+1. Install dependencies:
 ```bash
 cd backend
-python -m poetry install
+poetry install
 ```
 
-This will create a `.venv` folder in the project directory.
-
-### 3. Run the Server
-
-**Option 1: Use Poetry run (Recommended - No activation needed):**
+2. Create a `.env` file in the `backend` directory:
 ```bash
-python -m poetry run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+cp .env.example .env
 ```
 
-**Option 2: Use the helper script:**
-```powershell
-.\run.ps1
+3. Add your Google API Key to the `.env` file:
+```
+GOOGLE_API_KEY=your_actual_gemini_api_key_here
 ```
 
-**Option 3: Activate virtual environment (if execution policy allows):**
-```powershell
-# If you get execution policy error, use the helper script:
-.\activate.ps1
+To get a Google API key:
+- Go to https://makersuite.google.com/app/apikey
+- Create a new API key
+- Copy and paste it into your `.env` file
 
-# Or use Command Prompt instead:
-.venv\Scripts\activate.bat
-```
-
-**Option 4: Use Command Prompt (CMD) - No execution policy issues:**
-```cmd
-cd backend
-.venv\Scripts\activate.bat
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-
-## Quick Start
+## Running the Server
 
 ```bash
-cd backend
-python -m poetry install
-python -m poetry run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+poetry run uvicorn profu_backend.main:app --reload
 ```
 
 The API will be available at `http://localhost:8000`
 
-## Endpoints
+## API Endpoints
 
-- `GET /` - Health check
-- `GET /index` - Returns app description
-- `GET /docs` - Interactive API documentation (Swagger UI)
-- `GET /redoc` - Alternative API documentation (ReDoc)
+### GET /
+Health check endpoint
 
-## Fixing PowerShell Execution Policy
+### GET /index
+Returns application description
 
-If you get an execution policy error when activating the venv:
+### POST /clarify/stream
+Streaming endpoint for clarifying concepts
+- Request body: `{"query": "your question here"}`
+- Response: Server-Sent Events (SSE) stream with AI response tokens
 
-**Option 1: Use Poetry run (No activation needed)**
-```bash
-python -m poetry run uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
+## Development
 
-**Option 2: Use the helper script**
-```powershell
-.\activate.ps1
-```
-
-**Option 3: Change execution policy (Requires Admin PowerShell)**
-```powershell
-# Run PowerShell as Administrator, then:
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-**Option 4: Use Command Prompt instead**
-CMD doesn't have execution policy restrictions.
-
-## Adding Dependencies
-
-```bash
-python -m poetry add package-name
-python -m poetry add --group dev package-name
-```
+The backend uses:
+- FastAPI for the web framework
+- LangChain for LLM orchestration
+- Google Gemini 1.5 Flash for AI responses
+- Server-Sent Events (SSE) for token streaming

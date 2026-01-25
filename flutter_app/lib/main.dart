@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'pages/clarify_chat_page.dart';
 
 void main() {
   runApp(const ProfuApp());
@@ -14,9 +14,28 @@ class ProfuApp extends StatelessWidget {
     return MaterialApp(
       title: 'Profu',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.light,
+        ),
         useMaterial3: true,
       ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.blue,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFF121212),
+        cardTheme: const CardThemeData(
+          color: Color(0xFF1E1E1E),
+          elevation: 2,
+        ),
+        drawerTheme: const DrawerThemeData(
+          backgroundColor: Color(0xFF1E1E1E),
+        ),
+      ),
+      themeMode: ThemeMode.dark, // Force dark mode
       home: const LandingPage(),
     );
   }
@@ -30,7 +49,6 @@ class LandingPage extends StatefulWidget {
 }
 
 class _LandingPageState extends State<LandingPage> {
-  String _appDescription = '';
   bool _isLoading = false;
   String? _error;
 
@@ -53,9 +71,7 @@ class _LandingPageState extends State<LandingPage> {
       final response = await http.get(Uri.parse(_apiUrl));
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
         setState(() {
-          _appDescription = data['message'] ?? 'No description available';
           _isLoading = false;
         });
       } else {
@@ -80,6 +96,52 @@ class _LandingPageState extends State<LandingPage> {
         title: const Text('Profu'),
         centerTitle: true,
       ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              child: const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.school,
+                    size: 60,
+                    color: Colors.white,
+                  ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Meniu',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.help_outline, color: Colors.orange),
+              title: const Text('N-am înțeles la clasă'),
+              onTap: () => _handleMenuOption(context, 'clarify'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit_note, color: Colors.green),
+              title: const Text('Vreau să rezolv o problemă'),
+              onTap: () => _handleMenuOption(context, 'problem'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.quiz, color: Colors.purple),
+              title: const Text('Simulare'),
+              onTap: () => _handleMenuOption(context, 'simulation'),
+            ),
+          ],
+        ),
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -88,56 +150,65 @@ class _LandingPageState extends State<LandingPage> {
             children: [
               const Icon(
                 Icons.school,
-                size: 80,
+                size: 100,
                 color: Colors.blue,
               ),
               const SizedBox(height: 32),
+              Text(
+                'Bine ai venit la Profu!',
+                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Deschide meniul din stânga sus pentru a începe',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                    ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 48),
               if (_isLoading)
                 const CircularProgressIndicator()
               else if (_error != null)
-                Column(
-                  children: [
-                    Icon(
-                      Icons.error_outline,
-                      size: 48,
-                      color: Colors.red[300],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _error!,
-                      style: TextStyle(color: Colors.red[700]),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: _fetchAppDescription,
-                      child: const Text('Retry'),
-                    ),
-                  ],
+                Text(
+                  'Server offline',
+                  style: TextStyle(color: Colors.red[700]),
                 )
               else
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Text(
-                      _appDescription,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        height: 1.6,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle, size: 20, color: Colors.green[600]),
+                    const SizedBox(width: 8),
+                    const Text('Conectat la server'),
+                  ],
                 ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: _fetchAppDescription,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Refresh'),
-              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  void _handleMenuOption(BuildContext context, String option) {
+    Navigator.pop(context); // Close drawer
+    
+    if (option == 'clarify') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const ClarifyChatPage()),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ai selectat: $option'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      // TODO: Navigate to the appropriate screen based on option
+    }
   }
 }

@@ -1,5 +1,64 @@
 # Profu - AI-Powered Bacalaureat Tutor App (Solo MVP)
 
+## Quick Start Guide
+
+### Backend Setup
+
+1. Navigate to backend directory:
+```bash
+cd backend
+```
+
+2. Install dependencies:
+```bash
+poetry install
+```
+
+3. Create `.env` file and add your Google Gemini API key:
+```bash
+cp .env.example .env
+# Edit .env and add your GOOGLE_API_KEY
+```
+
+Get your API key from: https://makersuite.google.com/app/apikey
+
+4. Run the backend server:
+```bash
+poetry run uvicorn profu_backend.main:app --reload
+```
+
+The backend will be available at `http://localhost:8000`
+
+### Frontend Setup
+
+1. Navigate to Flutter app directory:
+```bash
+cd flutter_app
+```
+
+2. Install dependencies:
+```bash
+flutter pub get
+```
+
+3. Run the Flutter app:
+```bash
+flutter run
+```
+
+For web:
+```bash
+flutter run -d chrome
+```
+
+### Current Features
+
+- **N-am înțeles la clasă**: Chat interface with streaming AI responses powered by Gemini 1.5 Flash
+- Burger menu navigation
+- Real-time token streaming from backend to frontend
+
+---
+
 ## Project Documentation
 
 This repository contains the complete requirements engineering and project planning documentation for the **Profu** web application - an AI-driven tutoring app for Romanian high school seniors preparing for the Bacalaureat exam.
