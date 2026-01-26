@@ -86,7 +86,7 @@ class TestClarifyOnceEndpoint:
 class TestClarifyStepByStepEndpoint:
     """Test the /clarify/step-by-step-stream endpoint (Step-by-step mode)."""
     
-    @patch('profu_backend.routers.clarify_step_by_step.get_llm')
+    @patch('profu_backend.routers.clarify_with_steps.get_llm')
     def test_step_by_step_stream_endpoint_exists(self, mock_get_llm):
         """Test that the /clarify/step-by-step-stream endpoint exists and accepts POST."""
         # Mock the LLM to avoid real API calls
@@ -109,7 +109,7 @@ class TestClarifyStepByStepEndpoint:
         response = client.post("/clarify/step-by-step-stream", json={})
         assert response.status_code == 422  # Validation error
     
-    @patch('profu_backend.routers.clarify_step_by_step.get_llm')
+    @patch('profu_backend.routers.clarify_with_steps.get_llm')
     def test_step_by_step_stream_with_history(self, mock_get_llm):
         """Test streaming with conversation history (follow-up queries)."""
         mock_llm = AsyncMock()

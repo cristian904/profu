@@ -1,0 +1,17 @@
+# Coding standards
+- use " instead of ' for strings
+- type every function parameter
+- every time you add new code add comments and error handling
+- log every error and also intermediate steps so the progress
+is visable in the console
+- log messages should be in english
+- prompts will be in romanian
+- every function will have a docstring at the begining
+- create any major feature into a new file or module for better maintainability
+
+## AI Behavior
+- DO NOT remove existing comments or logic unless explicitly asked.
+- If a change is complex, explain the logic briefly before providing code.
+- Always check @codebase for existing patterns before suggesting new utilities.
+- When refactoring, provide the full file content if requested, or use clear diffs.
+
