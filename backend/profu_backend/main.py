@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
-from routers import clarify_once, clarify_step_by_step
+from routers import clarify_once, clarify_with_steps
 
 # Load environment variables
 load_dotenv()
@@ -24,7 +24,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(clarify_once.router)
-app.include_router(clarify_step_by_step.router)
+app.include_router(clarify_with_steps.router)
 
 @app.get("/")
 async def root():

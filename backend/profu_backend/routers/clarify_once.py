@@ -29,6 +29,12 @@ async def clarify_once_stream(request: QueryRequest):
     """
     async def generate():
         try:
+            # Validate query is not empty
+            if not request.query or not request.query.strip():
+                yield f"data: Eroare: Întrebarea nu poate fi goală.\n\n"
+                yield "data: [DONE]\n\n"
+                return
+            
             llm = get_llm()
             
             # Get system prompt from YAML configuration
@@ -37,12 +43,13 @@ async def clarify_once_stream(request: QueryRequest):
             # Build message history for conversation context
             messages = [SystemMessage(content=system_prompt)]
             
-            # Add conversation history
+            # Add conversation history (filter out empty messages)
             for msg in request.history:
-                if msg.role == "user":
-                    messages.append(HumanMessage(content=msg.content))
-                elif msg.role == "assistant":
-                    messages.append(AIMessage(content=msg.content))
+                if msg.content and msg.content.strip():  # Only add non-empty messages
+                    if msg.role == "user":
+                        messages.append(HumanMessage(content=msg.content))
+                    elif msg.role == "assistant":
+                        messages.append(AIMessage(content=msg.content))
             
             # Add current user query
             messages.append(HumanMessage(content=request.query))
