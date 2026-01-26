@@ -14,13 +14,62 @@ class ClarifyChatPage extends StatefulWidget {
   State<ClarifyChatPage> createState() => _ClarifyChatPageState();
 }
 
-class _ClarifyChatPageState extends State<ClarifyChatPage> {
+class _ClarifyChatPageState extends State<ClarifyChatPage> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+  
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: const Text('N-am înțeles la clasă'),
+        centerTitle: true,
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Explica'),
+            Tab(text: 'Învățat pas cu pas'),
+          ],
+        ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: const [
+          ExplicaTab(),
+          GuidedLearningTab(),
+        ],
+      ),
+    );
+  }
+}
+
+// Explica Tab - Direct answers mode
+class ExplicaTab extends StatefulWidget {
+  const ExplicaTab({super.key});
+
+  @override
+  State<ExplicaTab> createState() => _ExplicaTabState();
+}
+
+class _ExplicaTabState extends State<ExplicaTab> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   bool _isStreaming = false;
 
-  final String _apiUrl = 'http://localhost:8000/clarify/stream';
+  final String _apiUrl = 'http://localhost:8000/clarify/once-stream';
 
   @override
   void dispose() {
@@ -106,6 +155,19 @@ class _ClarifyChatPageState extends State<ClarifyChatPage> {
                   _messages[aiMessageIndex].isStreaming = false;
                   _isStreaming = false;
                 });
+              } else if (data.startsWith('[META]')) {
+                // Parse metadata (time to first token)
+                try {
+                  final metaJson = data.substring(6);
+                  final metadata = json.decode(metaJson);
+                  if (metadata['ttft'] != null) {
+                    setState(() {
+                      _messages[aiMessageIndex].timeToFirstToken = metadata['ttft'];
+                    });
+                  }
+                } catch (e) {
+                  // Ignore metadata parsing errors
+                }
               } else {
                 // Unescape newlines from SSE format
                 final unescapedData = data.replaceAll('\\n', '\n');
@@ -136,13 +198,7 @@ class _ClarifyChatPageState extends State<ClarifyChatPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: const Text('N-am înțeles la clasă'),
-        centerTitle: true,
-      ),
-      body: Column(
+    return Column(
         children: [
           // Chat messages
           Expanded(
@@ -230,8 +286,7 @@ class _ClarifyChatPageState extends State<ClarifyChatPage> {
             ),
           ),
         ],
-      ),
-    );
+      );
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
@@ -239,21 +294,37 @@ class _ClarifyChatPageState extends State<ClarifyChatPage> {
     
     return Align(
       alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
-        ),
-        decoration: BoxDecoration(
-          color: message.isUser
-              ? Theme.of(context).colorScheme.primary
-              : (isDark ? const Color(0xFF2C2C2C) : Colors.grey[200]),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (message.isUser)
+      child: Column(
+        crossAxisAlignment: message.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          // Show time to first token above assistant messages
+          if (!message.isUser && message.timeToFirstToken != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, bottom: 4),
+              child: Text(
+                'Time to first token: ${message.timeToFirstToken!.toStringAsFixed(2)}s',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark ? Colors.grey[500] : Colors.grey[600],
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.75,
+            ),
+            decoration: BoxDecoration(
+              color: message.isUser
+                  ? Theme.of(context).colorScheme.primary
+                  : (isDark ? const Color(0xFF2C2C2C) : Colors.grey[200]),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (message.isUser)
               // User messages: simple text
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -366,6 +437,399 @@ class _ClarifyChatPageState extends State<ClarifyChatPage> {
           ],
         ),
       ),
+      ],
+      ),
+    );
+  }
+}
+
+// Guided Learning Tab - Interactive step-by-step mode
+class GuidedLearningTab extends StatefulWidget {
+  const GuidedLearningTab({super.key});
+
+  @override
+  State<GuidedLearningTab> createState() => _GuidedLearningTabState();
+}
+
+class _GuidedLearningTabState extends State<GuidedLearningTab> {
+  final TextEditingController _messageController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final List<ChatMessage> _messages = [];
+  bool _isStreaming = false;
+
+  final String _apiUrl = 'http://localhost:8000/clarify/step-by-step-stream';
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _sendMessage() async {
+    final message = _messageController.text.trim();
+    if (message.isEmpty || _isStreaming) return;
+
+    // Add user message
+    setState(() {
+      _messages.add(ChatMessage(
+        text: message,
+        isUser: true,
+        timestamp: DateTime.now(),
+      ));
+      _isStreaming = true;
+    });
+
+    _messageController.clear();
+    _scrollToBottom();
+
+    // Add placeholder for AI response
+    final aiMessageIndex = _messages.length;
+    setState(() {
+      _messages.add(ChatMessage(
+        text: '',
+        isUser: false,
+        timestamp: DateTime.now(),
+        isStreaming: true,
+      ));
+    });
+
+    try {
+      final request = http.Request('POST', Uri.parse(_apiUrl));
+      request.headers['Content-Type'] = 'application/json';
+      
+      // Build conversation history (exclude the placeholder AI message we just added)
+      final history = <Map<String, String>>[];
+      for (int i = 0; i < _messages.length - 1; i++) {
+        final msg = _messages[i];
+        if (msg.text.isNotEmpty) {
+          history.add({
+            'role': msg.isUser ? 'user' : 'assistant',
+            'content': msg.text,
+          });
+        }
+      }
+      
+      request.body = json.encode({
+        'query': message,
+        'history': history,
+      });
+
+      final streamedResponse = await request.send();
+
+      if (streamedResponse.statusCode == 200) {
+        String accumulatedText = '';
+
+        await for (var chunk in streamedResponse.stream.transform(utf8.decoder)) {
+          // Parse SSE format
+          final lines = chunk.split('\n');
+          for (var line in lines) {
+            if (line.startsWith('data: ')) {
+              final data = line.substring(6);
+              if (data == '[DONE]') {
+                setState(() {
+                  _messages[aiMessageIndex].isStreaming = false;
+                  _isStreaming = false;
+                });
+              } else if (data.startsWith('[META]')) {
+                // Parse metadata (time to first token)
+                try {
+                  final metaJson = data.substring(6);
+                  final metadata = json.decode(metaJson);
+                  if (metadata['ttft'] != null) {
+                    setState(() {
+                      _messages[aiMessageIndex].timeToFirstToken = metadata['ttft'];
+                    });
+                  }
+                } catch (e) {
+                  // Ignore metadata parsing errors
+                }
+              } else {
+                // Unescape newlines from SSE format
+                final unescapedData = data.replaceAll('\\n', '\n');
+                accumulatedText += unescapedData;
+                setState(() {
+                  _messages[aiMessageIndex].text = accumulatedText;
+                });
+                _scrollToBottom();
+              }
+            }
+          }
+        }
+      } else {
+        setState(() {
+          _messages[aiMessageIndex].text = 'Eroare: Nu am putut obține răspuns de la server.';
+          _messages[aiMessageIndex].isStreaming = false;
+          _isStreaming = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _messages[aiMessageIndex].text = 'Eroare de conexiune: $e';
+        _messages[aiMessageIndex].isStreaming = false;
+        _isStreaming = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Chat messages
+        Expanded(
+          child: _messages.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.school_outlined,
+                        size: 80,
+                        color: Colors.orange.withOpacity(0.5),
+                      ),
+                      const SizedBox(height: 16),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 32),
+                        child: Text(
+                          'Pune o întrebare și te voi ghida pas cu pas să înțelegi conceptul!',
+                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                color: Colors.grey[600],
+                              ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _messages.length,
+                  itemBuilder: (context, index) {
+                    return _buildMessageBubble(_messages[index]);
+                  },
+                ),
+        ),
+        // Input area
+        Container(
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 4,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(16),
+          child: SafeArea(
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _messageController,
+                    decoration: InputDecoration(
+                      hintText: 'Scrie mesajul tău...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                    ),
+                    maxLines: null,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendMessage(),
+                    enabled: !_isStreaming,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FloatingActionButton(
+                  onPressed: _isStreaming ? null : _sendMessage,
+                  child: _isStreaming
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.send),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMessageBubble(ChatMessage message) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    return Align(
+      alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: message.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          // Show time to first token above assistant messages
+          if (!message.isUser && message.timeToFirstToken != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 16, bottom: 4),
+              child: Text(
+                'Time to first token: ${message.timeToFirstToken!.toStringAsFixed(2)}s',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDark ? Colors.grey[500] : Colors.grey[600],
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            constraints: BoxConstraints(
+              maxWidth: MediaQuery.of(context).size.width * 0.75,
+            ),
+            decoration: BoxDecoration(
+              color: message.isUser
+                  ? Theme.of(context).colorScheme.primary
+                  : (isDark ? const Color(0xFF2C2C2C) : Colors.grey[200]),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (message.isUser)
+              // User messages: simple text
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Text(
+                  message.text,
+                  style: TextStyle(
+                    color: message.isUser 
+                        ? Colors.white 
+                        : (isDark ? Colors.white : Colors.black87),
+                    fontSize: 16,
+                  ),
+                ),
+              )
+            else
+              // AI messages: markdown support
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: MarkdownBody(
+                  data: message.text.isEmpty ? '_Typing..._' : message.text,
+                  selectable: true,
+                  shrinkWrap: true,
+                  fitContent: true,
+                  builders: {
+                    'latex': LatexElementBuilder(),
+                    'code': CustomCodeElementBuilder(),
+                  },
+                  inlineSyntaxes: [LatexInlineSyntax()],
+                  styleSheet: MarkdownStyleSheet(
+                    p: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 16,
+                      height: 1.5,
+                    ),
+                    strong: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
+                    em: const TextStyle(
+                      fontStyle: FontStyle.italic,
+                    ),
+                    code: TextStyle(
+                      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.grey[300],
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontFamily: 'monospace',
+                      fontSize: 14,
+                    ),
+                    codeblockPadding: const EdgeInsets.all(8),
+                    codeblockDecoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.grey[300],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    blockquote: TextStyle(
+                      color: isDark ? Colors.grey[400] : Colors.grey[700],
+                      fontStyle: FontStyle.italic,
+                    ),
+                    blockquotePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    blockquoteDecoration: BoxDecoration(
+                      color: isDark ? const Color(0xFF1E1E1E) : Colors.grey[100],
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border(
+                        left: BorderSide(
+                          color: isDark ? Colors.grey[600]! : Colors.grey[400]!,
+                          width: 4,
+                        ),
+                      ),
+                    ),
+                    h1: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                      height: 1.5,
+                    ),
+                    h2: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                      height: 1.4,
+                    ),
+                    h3: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : Colors.black87,
+                      height: 1.3,
+                    ),
+                    listBullet: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 16,
+                    ),
+                    listIndent: 24,
+                    h1Padding: const EdgeInsets.only(top: 8, bottom: 4),
+                    h2Padding: const EdgeInsets.only(top: 8, bottom: 4),
+                    h3Padding: const EdgeInsets.only(top: 8, bottom: 4),
+                  ),
+                ),
+              ),
+            if (message.isStreaming)
+              Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: message.isUser 
+                        ? Colors.white 
+                        : (isDark ? Colors.grey[400] : Colors.grey[700]),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+      ],
+      ),
     );
   }
 }
@@ -375,12 +839,14 @@ class ChatMessage {
   final bool isUser;
   final DateTime timestamp;
   bool isStreaming;
+  double? timeToFirstToken; // Time in seconds
 
   ChatMessage({
     required this.text,
     required this.isUser,
     required this.timestamp,
     this.isStreaming = false,
+    this.timeToFirstToken,
   });
 }
 
@@ -480,8 +946,9 @@ class CustomCodeElementBuilder extends MarkdownElementBuilder {
   }
 
   Widget _buildGraph(String content) {
-    // Parse the graph definition
+    // Parse the graph definition - collect ALL functions, not just unique keys
     final params = <String, String>{};
+    final functions = <String>[];
     final lines = content.trim().split('\n');
     
     for (final line in lines) {
@@ -489,11 +956,35 @@ class CustomCodeElementBuilder extends MarkdownElementBuilder {
       if (colonIndex > 0) {
         final key = line.substring(0, colonIndex).trim();
         final value = line.substring(colonIndex + 1).trim();
-        params[key] = value;
+        
+        // Collect all function values (handle duplicate 'function:' keys)
+        if (key == 'function' && value.isNotEmpty) {
+          functions.add(value);
+        } else if (key.startsWith('function') && value.isNotEmpty) {
+          // Handle function1, function2, etc. - extract number for ordering
+          final numMatch = RegExp(r'function(\d+)').firstMatch(key);
+          if (numMatch != null) {
+            final index = int.parse(numMatch.group(1)!);
+            // Ensure list is large enough
+            while (functions.length < index) {
+              functions.add('');
+            }
+            // Insert at correct position (1-indexed)
+            if (index > 0) {
+              functions[index - 1] = value;
+            }
+          }
+        } else {
+          // Store other parameters normally
+          params[key] = value;
+        }
       }
     }
 
-    if (params['function'] == null || params['function']!.isEmpty) {
+    // Remove empty function entries
+    functions.removeWhere((f) => f.isEmpty);
+
+    if (functions.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(16),
         margin: const EdgeInsets.symmetric(vertical: 8),
@@ -511,7 +1002,7 @@ class CustomCodeElementBuilder extends MarkdownElementBuilder {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: FunctionGraphWidget(
-        functionStr: params['function']!,
+        functions: functions,
         xMin: double.tryParse(params['xMin'] ?? '-5') ?? -5,
         xMax: double.tryParse(params['xMax'] ?? '5') ?? 5,
         yMin: double.tryParse(params['yMin'] ?? '-5') ?? -5,
@@ -524,7 +1015,7 @@ class CustomCodeElementBuilder extends MarkdownElementBuilder {
 
 // Widget to render function graphs
 class FunctionGraphWidget extends StatelessWidget {
-  final String functionStr;
+  final List<String> functions;
   final double xMin;
   final double xMax;
   final double yMin;
@@ -533,7 +1024,7 @@ class FunctionGraphWidget extends StatelessWidget {
 
   const FunctionGraphWidget({
     super.key,
-    required this.functionStr,
+    required this.functions,
     required this.xMin,
     required this.xMax,
     required this.yMin,
@@ -541,7 +1032,7 @@ class FunctionGraphWidget extends StatelessWidget {
     this.title,
   });
 
-  List<FlSpot> _generatePoints() {
+  List<FlSpot> _generatePoints(String functionStr) {
     final points = <FlSpot>[];
     
     try {
@@ -590,10 +1081,39 @@ class FunctionGraphWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final points = _generatePoints();
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    // Define colors for multiple functions
+    final lineColors = [
+      Colors.blue,
+      Colors.red,
+      Colors.green,
+      Colors.orange,
+      Colors.purple,
+    ];
 
-    if (points.isEmpty) {
+    // Generate points for each function
+    final allLineData = <LineChartBarData>[];
+    final functionLabels = <String>[];
+    
+    for (int i = 0; i < functions.length; i++) {
+      final points = _generatePoints(functions[i]);
+      if (points.isNotEmpty) {
+        allLineData.add(
+          LineChartBarData(
+            spots: points,
+            isCurved: true,
+            color: lineColors[i % lineColors.length],
+            barWidth: 2,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(show: false),
+          ),
+        );
+        functionLabels.add(functions[i]);
+      }
+    }
+
+    if (allLineData.isEmpty) {
       return Container(
         height: 250,
         padding: const EdgeInsets.all(16),
@@ -603,7 +1123,7 @@ class FunctionGraphWidget extends StatelessWidget {
         ),
         child: Center(
           child: Text(
-            'Could not render graph for: $functionStr',
+            'Could not render graph for: ${functions.join(", ")}',
             style: const TextStyle(color: Colors.red),
           ),
         ),
@@ -703,30 +1223,51 @@ class FunctionGraphWidget extends StatelessWidget {
                 maxX: xMax,
                 minY: yMin,
                 maxY: yMax,
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: points,
-                    isCurved: true,
-                    color: Colors.blue,
-                    barWidth: 2,
-                    dotData: const FlDotData(show: false),
-                    belowBarData: BarAreaData(show: false),
-                  ),
-                ],
+                lineBarsData: allLineData,
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              functionStr,
-              style: TextStyle(
-                fontSize: 12,
-                fontStyle: FontStyle.italic,
-                color: isDark ? Colors.grey[400] : Colors.black54,
+          // Show legend with function labels and colors
+          if (functionLabels.length > 1)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 4,
+                children: List.generate(functionLabels.length, (i) {
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 16,
+                        height: 2,
+                        color: lineColors[i % lineColors.length],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        functionLabels[i],
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? Colors.grey[400] : Colors.black54,
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                functionLabels.first,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontStyle: FontStyle.italic,
+                  color: isDark ? Colors.grey[400] : Colors.black54,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

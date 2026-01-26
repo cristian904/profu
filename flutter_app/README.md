@@ -82,3 +82,41 @@ The streaming is implemented using Server-Sent Events (SSE) for real-time token 
 To change the backend URL, edit the `_apiUrl` variable in:
 - `lib/main.dart` (line 38)
 - `lib/pages/clarify_chat_page.dart` (line 18)
+
+## Testing
+
+The app includes widget tests and unit tests.
+
+### Running Tests
+
+Run all tests:
+```bash
+flutter test
+```
+
+Run tests with coverage:
+```bash
+flutter test --coverage
+```
+
+Run specific test file:
+```bash
+flutter test test/widget_test.dart
+```
+
+### Test Structure
+
+```
+test/
+├── widget_test.dart              # Main app widget tests
+└── clarify_chat_page_test.dart   # Chat page widget tests
+```
+
+Tests cover:
+- ✅ App initialization and build
+- ✅ Navigation and drawer menu
+- ✅ Dark theme configuration
+- ✅ Chat page UI components
+- ✅ Text input and send button
+- ✅ Message display and scrolling
+- ✅ ChatMessage model validation

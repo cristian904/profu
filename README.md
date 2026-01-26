@@ -1,5 +1,16 @@
 # Profu - AI-Powered Bacalaureat Tutor App (Solo MVP)
 
+![Backend Tests](https://github.com/YOUR_USERNAME/profu/actions/workflows/backend-tests.yml/badge.svg)
+![Frontend Tests](https://github.com/YOUR_USERNAME/profu/actions/workflows/frontend-tests.yml/badge.svg)
+![CI Pipeline](https://github.com/YOUR_USERNAME/profu/actions/workflows/ci.yml/badge.svg)
+
+## 📚 Documentation
+
+- **[Implemented Features](docs/IMPLEMENTED_FEATURES.md)** - Business-level overview of all completed features
+- **[Technical Architecture](docs/TECHNICAL_ARCHITECTURE.md)** - System design and technical details
+- **[Project Plan](docs/PROJECT_PLAN.md)** - Development roadmap and timeline
+- **[Requirements](docs/REQUIREMENTS.md)** - Product requirements and specifications
+
 ## Quick Start Guide
 
 ### Backend Setup
@@ -53,9 +64,62 @@ flutter run -d chrome
 
 ### Current Features
 
-- **N-am înțeles la clasă**: Chat interface with streaming AI responses powered by Gemini 1.5 Flash
-- Burger menu navigation
-- Real-time token streaming from backend to frontend
+- **N-am înțeles la clasă**: Interactive chat interface with:
+  - **Streaming AI responses** powered by Gemini 2.0 Flash
+  - **Conversation memory** for contextual follow-up questions
+  - **Markdown formatting** (bold, italic, headings, lists, code blocks)
+  - **LaTeX math rendering** for formulas (inline: `$x^2$`, display: `$$\frac{a}{b}$$`)
+  - **Interactive function graphs** for mathematical visualizations
+  - **Dark theme** UI for comfortable viewing
+- **Burger menu navigation** for easy access to features
+- **Real-time token streaming** from backend to frontend using SSE
+- **Configurable AI prompts** via YAML files (no code changes needed)
+- **Comprehensive test coverage** for both backend and frontend
+
+### Testing
+
+#### Backend Tests
+```bash
+cd backend
+poetry install --with dev
+poetry run pytest
+```
+
+Tests include:
+- API endpoint validation
+- Pydantic model validation
+- Streaming functionality
+- Error handling
+- LLM configuration
+
+#### Frontend Tests
+```bash
+cd flutter_app
+flutter test
+```
+
+Tests include:
+- Widget rendering
+- Navigation flow
+- User interactions
+- Message handling
+- UI components
+
+### CI/CD Pipeline
+
+The project includes automated GitHub Actions workflows:
+- **Backend Tests**: Runs on every push/PR affecting backend code
+- **Frontend Tests**: Runs on every push/PR affecting frontend code
+- **Combined CI**: Runs both test suites in parallel
+
+See [CI/CD Documentation](.github/CI_CD.md) for detailed setup and configuration.
+
+**Features:**
+- ✅ Automated testing on push/PR
+- ✅ Code coverage reporting (Codecov)
+- ✅ Parallel test execution
+- ✅ Dependency caching for fast builds
+- ✅ Branch protection ready
 
 ---
 

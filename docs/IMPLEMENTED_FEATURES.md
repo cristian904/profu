@@ -1,0 +1,215 @@
+# Profu - Implemented Features
+
+**Last Updated:** January 26, 2026
+
+This document provides a business-level overview of all features currently implemented in Profu. It serves as a living record of the application's capabilities and should be updated whenever new features are added or existing functionality changes significantly.
+
+---
+
+## 📱 Current Product Status
+
+**Platform:** Flutter Mobile App + FastAPI Backend  
+**Focus:** Math problems for Romanian Bacalaureat preparation  
+**Stage:** Active Development (MVP Phase)
+
+---
+
+## ✅ Implemented Features
+
+### 1. N-am înțeles la clasă (I Didn't Understand in Class)
+
+**Status:** ✅ Fully Implemented  
+**Implementation Date:** January 2026
+
+A dual-mode AI tutoring system that helps students understand concepts they didn't grasp during classroom instruction. Students can choose between two learning approaches:
+
+#### Mode 1: Clarify Once (Direct Answers)
+- **What it does:** Provides immediate, comprehensive explanations to student questions
+- **How it works:** 
+  - Student asks a question about a concept they don't understand
+  - AI responds with a complete, detailed explanation immediately
+  - Supports follow-up questions for deeper clarification
+  - All responses include mathematical formulas (LaTeX), markdown formatting, and visual graphs when relevant
+  
+- **Best for:** Students who need quick clarification or want direct answers to specific questions
+
+- **Example Flow:**
+  ```
+  Student: "What is the Pythagorean theorem?"
+  AI: [Provides complete explanation with formula, examples, and visual graph]
+  Student: "Can you show me an example?"
+  AI: [Provides detailed worked example]
+  ```
+
+#### Mode 2: Clarify Step-by-Step (Guided Learning)
+- **What it does:** Uses Socratic method to guide students through understanding complex concepts
+- **How it works:**
+  - Student asks about a concept they want to understand
+  - **Preview:** AI shows a roadmap of 2-3 prerequisite concepts that will be covered
+  - **Progress Tracking:** Each concept shows progress (e.g., "[Concept 2/3] 📖")
+  - AI asks questions about each prerequisite one by one
+  - **Confidence Detection:** AI adjusts tone based on student certainty in answers
+  - **Varied Encouragement:** Uses diverse positive reinforcement (Perfect! Bravo! Minunat!)
+  - If student answers correctly, moves to next prerequisite with celebration
+  - If student struggles, AI provides clear explanation with extra support
+  - **Final Recap:** Reviews all learned concepts before the main explanation
+  - AI provides comprehensive explanation of the original concept with references to prerequisites
+  - **Motivational Closure:** Ends with encouragement and suggested next steps
+  
+- **Best for:** Students who want deeper understanding and prefer interactive, guided learning
+- **Uses:** LangGraph workflow for state management and intelligent conversation flow
+
+- **Example Flow:**
+  ```
+  Student: "I want to understand derivatives"
+  AI: "To understand derivatives, we need to cover: 1) limits, 2) rate of change. 
+       Let's start - what do you know about limits?"
+  Student: [Provides answer]
+  AI: [Evaluates, clarifies if needed, moves to next concept]
+  [After prerequisites]
+  AI: [Provides comprehensive derivative explanation with examples and graphs]
+  ```
+
+#### Technical Capabilities
+- **Real-time streaming:** Responses stream token-by-token for natural conversation feel
+- **Rich formatting:** 
+  - Markdown for text structure
+  - LaTeX for mathematical formulas (inline and display modes)
+  - Interactive function graphs with multiple curves support
+  - Color-coded graphs for comparing functions (e.g., function and its tangent)
+- **Context retention:** Maintains conversation history for coherent follow-up discussions
+- **Performance tracking:** Monitors time-to-first-token for quality assurance
+
+#### Business Value
+- Replicates private tutor experience at scale
+- Two learning modes accommodate different learning styles
+- 24/7 availability without scheduling constraints
+- Consistent quality explanations across all topics
+- Cost-effective compared to traditional tutoring (target: <50 RON/month vs 400-600 RON/month)
+
+---
+
+## 🔄 Recent Changes
+
+### January 26, 2026 - Step-by-Step Learning Enhancements (Quick Wins)
+**What Changed:**
+- **Progress Tracking:** Students now see their progress through prerequisites (e.g., "Concept 2/3")
+- **Learning Journey Preview:** At the start, students see a roadmap of all concepts they'll learn
+- **Varied Encouragement:** AI uses diverse positive reinforcement (Perfect! Bravo! Minunat! etc.)
+- **Confidence Detection:** AI adjusts tone based on student certainty ("cred că", "nu sunt sigur")
+- **Final Recap:** Comprehensive summary of learned concepts before final explanation
+- **Motivational Closure:** Each learning session ends with encouragement and next steps
+
+**Business Impact:**
+- Improved student engagement and motivation
+- Clearer learning path visibility
+- More personalized tutoring experience
+- Better mimics real human tutor interactions
+
+### January 26, 2026 - Feature Renaming for Clarity
+**What Changed:**
+- Backend router files renamed for better code maintainability:
+  - `explica.py` → `clarify_once.py`
+  - `guided_learning.py` → `clarify_step_by_step.py`
+- API endpoints updated for consistency:
+  - `/clarify/stream` → `/clarify/once-stream`
+  - `/clarify/guided-stream` → `/clarify/step-by-step-stream`
+
+**Business Impact:**
+- None - functionality remains identical
+- Internal codebase is more maintainable
+- API naming is more intuitive for future development
+
+---
+
+## 📊 Feature Roadmap Status
+
+| Feature | Status | Priority | Notes |
+|---------|--------|----------|-------|
+| N-am înțeles la clasă | ✅ Complete | P1 | Both modes fully functional |
+| Progressive Hints | 🔄 Planned | P1 | Scan problems, get step-by-step hints |
+| Similar Problems Finder | 📋 Backlog | P2 | Find practice problems |
+| Exam Simulator | 📋 Backlog | P2 | Basic practice exams |
+
+**Legend:**
+- ✅ Complete - Feature is live and tested
+- 🔄 Planned - Next in development pipeline
+- 📋 Backlog - Planned for future implementation
+- ⏸️ Paused - Development temporarily suspended
+
+---
+
+## 🎯 Key Metrics & Performance
+
+### User Experience
+- **Response Time:** First token typically appears within 1-3 seconds
+- **Accuracy:** Responses based on Gemini 2.0 Flash model
+- **Availability:** 24/7 (dependent on backend uptime)
+
+### Technical Performance
+- **Backend:** FastAPI with async/streaming support
+- **AI Model:** Google Gemini 2.0 Flash (temperature: 0.0 for consistency)
+- **Scalability:** Stateless design allows horizontal scaling
+
+---
+
+## 💡 How Features Work Together
+
+Currently, the "N-am înțeles la clasă" feature operates as a standalone tutoring system. As additional features are implemented, they will complement each other:
+
+**Future Integration Example:**
+1. Student scans a problem (Progressive Hints feature)
+2. Gets stuck on a specific concept
+3. Switches to "N-am înțeles la clasă" to understand that concept
+4. Returns to problem with better understanding
+
+---
+
+## 📝 Feature Update Guidelines
+
+When updating this document:
+
+1. **For New Features:**
+   - Add to "Implemented Features" section
+   - Update roadmap status table
+   - Add implementation date
+   - Explain business value
+
+2. **For Feature Changes:**
+   - Add entry to "Recent Changes" section
+   - Update relevant feature description
+   - Note business impact (if any)
+
+3. **Keep Business-Focused:**
+   - Focus on WHAT users can do
+   - Explain WHY it matters
+   - Avoid technical implementation details (save for technical docs)
+   - Use examples to illustrate functionality
+
+---
+
+## 📞 Feature Support
+
+For questions about feature implementation or to report issues:
+- **Technical Issues:** Check backend logs and Flutter console
+- **Feature Requests:** Document in project backlog
+- **Bug Reports:** Include steps to reproduce, expected vs actual behavior
+
+---
+
+## 🔮 Next Steps
+
+**Immediate Priorities:**
+1. Complete Progressive Hints system (P1 feature)
+2. Gather user feedback on Clarify modes
+3. Monitor performance metrics and optimize as needed
+
+**Future Enhancements:**
+1. Expand to other subjects beyond math
+2. Add Romanian language support throughout (currently mixed RO/EN)
+3. Implement user progress tracking
+4. Add personalized learning recommendations
+
+---
+
+*This document should be reviewed and updated at the end of each development sprint or when significant features are completed.*
