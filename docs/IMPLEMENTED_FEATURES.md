@@ -89,6 +89,54 @@ A dual-mode AI tutoring system that helps students understand concepts they didn
 
 ---
 
+### 2. Vreau să rezolv o problemă (I Want to Solve a Problem)
+
+**Status:** ✅ Implemented (first version)  
+**Implementation Date:** January 2026
+
+An AI-assisted flow for students who have a concrete exam problem (usually on paper or in a photo) and want help understanding and solving it, step by step.
+
+#### What it does
+- Lets students **upload a picture** of a math problem (mobile or web).
+- Automatically extracts the **problem text (OCR)** and builds context around it.
+- Starts the conversation with an **assistant message** that:
+  - Reflects the detected problem statement.
+  - Asks the student whether they want a full solution or just hints.
+- Continues as a **chat-based problem-solving session**:
+  - Students can ask for hints, explanations of specific steps, or full solutions.
+  - The AI can adjust between detailed reasoning and high-level guidance.
+
+#### How it works (business-level)
+- **Student journey:**
+  1. Opens “Vreau să rezolv o problemă”.
+  2. Uploads a photo of a math problem.
+  3. Sees the image preview and the AI’s first response summarizing the problem.
+  4. Chooses how much help they want (hint vs full solution).
+  5. Asks follow-up questions until they fully understand the solution.
+
+- **Behind the scenes:**
+  - The backend runs OCR and interprets the problem.
+  - The AI model generates a structured first answer tailored to that problem.
+  - The Flutter app keeps the **image + conversation** together in a single session.
+
+#### Integration with conversation history
+- Each “Vreau să rezolv o problemă” session is stored as a `problem_solving` conversation in Supabase.
+- The **first stored message** is the assistant’s initial message based on the uploaded image.
+- All further questions and answers are stored as additional messages in the same conversation.
+- The **conversation sidebar**:
+  - Shows a list of past problem-solving sessions.
+  - Lets students reopen an old problem and continue the discussion.
+  - Allows renaming conversation titles for easier navigation (e.g., “Integrals – variantă 2023”).
+
+#### Business Value
+- Helps students **bridge the gap between theory and real exam tasks**.
+- Reduces friction: no need to type long problems; a quick photo is enough.
+- Encourages **productive struggle**:
+  - Students can start with a hint, attempt the problem, and come back for more detailed help.
+- Builds a **history of solved problems** for reflection, revision, and teacher review.
+
+---
+
 ## 💾 Supabase Integration & Conversation History
 
 ### January 28, 2026 - Persistent Conversations via Supabase
