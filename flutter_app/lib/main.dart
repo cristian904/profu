@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'pages/clarify_chat_page.dart';
+import 'pages/solve_problem_page.dart';
 
 void main() {
   runApp(const ProfuApp());
@@ -200,6 +201,11 @@ class _LandingPageState extends State<LandingPage> {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const ClarifyChatPage()),
+      );
+    } else if (option == 'problem') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const SolveProblemPage()),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
