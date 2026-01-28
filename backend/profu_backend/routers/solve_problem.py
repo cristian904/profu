@@ -74,7 +74,7 @@ async def perform_ocr(image_bytes: bytes) -> str:
     logger.info("[OCR] Initializing Gemini Vision model")
     # Use Gemini vision model (gemini-2.0-flash-exp supports vision)
     vision_llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash-exp",
+        model="gemini-2.0-flash",
         temperature=0.0,
         google_api_key=api_key,
     )

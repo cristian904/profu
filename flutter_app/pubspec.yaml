@@ -16,6 +16,7 @@ dependencies:
   fl_chart: ^0.69.0
   math_expressions: ^2.6.0
   file_picker: ^8.0.0
+  supabase_flutter: ^2.5.0
 
 dev_dependencies:
   flutter_test:

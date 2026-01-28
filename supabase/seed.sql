@@ -1,0 +1,2 @@
+-- Optional seed data for local development.
+-- Add INSERT statements here if needed (e.g. sample exam_problems).

@@ -12,6 +12,11 @@ import 'package:math_expressions/math_expressions.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:async' show Timer, TimeoutException;
 
+import '../models/conversation_models.dart';
+import '../services/conversation_repository.dart';
+import '../widgets/conversation_sidebar.dart';
+import '../widgets/profu_drawer.dart';
+
 class SolveProblemPage extends StatefulWidget {
   const SolveProblemPage({super.key});
 
@@ -24,10 +29,15 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   bool _isStreaming = false;
+  bool _isLoadingHistory = false;
   String? _problemText;
   File? _selectedImage; // For mobile
   Uint8List? _selectedImageBytes; // For web
   String? _selectedImageName;
+
+  final ConversationRepository _conversationRepository = ConversationRepository();
+  Conversation? _activeConversation;
+  int? _conversationId;
 
   final String _apiUrl = 'http://localhost:8000/solve-problem';
   final String _uploadUrl = 'http://localhost:8000/solve-problem/upload';
@@ -49,6 +59,66 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
         );
       }
     });
+  }
+
+  Future<void> _ensureConversationCreated(String firstUserMessage) async {
+    if (_conversationId != null) return;
+
+    final baseText = (_problemText?.trim().isNotEmpty ?? false)
+        ? _problemText!.trim()
+        : firstUserMessage.trim();
+
+    final title = baseText.isEmpty
+        ? null
+        : (baseText.length > 80 ? '${baseText.substring(0, 80)}...' : baseText);
+
+    final conv = await _conversationRepository.createConversation(
+      type: ConversationType.problemSolving,
+      title: title,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _activeConversation = conv;
+      _conversationId = conv.id;
+    });
+  }
+
+  Future<void> _loadConversationHistory(Conversation conversation) async {
+    setState(() {
+      _isLoadingHistory = true;
+      _isStreaming = false;
+    });
+
+    try {
+      final messages = await _conversationRepository.listMessages(
+        conversationId: conversation.id,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(
+            messages.map(
+              (m) => ChatMessage(
+                text: m.content ?? '',
+                isUser: m.speaker == ConversationSpeaker.user,
+                timestamp: m.createdAt,
+              ),
+            ),
+          );
+        _activeConversation = conversation;
+        _conversationId = conversation.id;
+      });
+      _scrollToBottom();
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingHistory = false;
+      });
+    }
   }
 
   Future<void> _pickImage() async {
@@ -205,7 +275,29 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
       } else {
         initialMessage = "Pare o problemă interesantă! Ai vrea o rezolvare completă sau un hint?";
       }
-      
+
+      // Ensure the conversation exists and store the first assistant message
+      try {
+        await _ensureConversationCreated(initialMessage);
+        if (_conversationId != null && initialMessage.trim().isNotEmpty) {
+          _conversationRepository
+              .createMessage(
+                conversationId: _conversationId!,
+                speaker: ConversationSpeaker.assistant,
+                content: initialMessage,
+              )
+              .then((_) {}, onError: (e) {
+            // Ignore persistence errors for now
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Nu am putut salva conversația: $e')),
+          );
+        }
+      }
+
       setState(() {
         _messages.add(ChatMessage(
           text: initialMessage,
@@ -243,6 +335,30 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
 
     _messageController.clear();
     _scrollToBottom();
+
+    // Ensure a conversation exists for this thread
+    try {
+      await _ensureConversationCreated(message);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Nu am putut crea conversația: $e')),
+        );
+      }
+    }
+
+    // Fire-and-forget: store the user message
+    if (_conversationId != null) {
+      _conversationRepository
+          .createMessage(
+            conversationId: _conversationId!,
+            speaker: ConversationSpeaker.user,
+            content: message,
+          )
+          .then((_) {}, onError: (e) {
+        // Only log; do not break the chat flow
+      });
+    }
 
     // Add placeholder for AI response
     final aiMessageIndex = _messages.length;
@@ -310,7 +426,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                 
                 if (data == '[DONE]') {
                   shouldStop = true;
-                  timeoutTimer?.cancel();
+                  timeoutTimer.cancel();
                   if (mounted) {
                     // Modify properties directly (same as working clarify_chat_page.dart)
                     if (aiMessageIndex < _messages.length) {
@@ -318,6 +434,21 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                         _messages[aiMessageIndex].isStreaming = false;
                         _isStreaming = false;
                       });
+
+                      // Store assistant message when streaming ends
+                      final fullText = accumulatedText;
+                      if (_conversationId != null &&
+                          fullText.trim().isNotEmpty) {
+                        _conversationRepository
+                            .createMessage(
+                              conversationId: _conversationId!,
+                              speaker: ConversationSpeaker.assistant,
+                              content: fullText,
+                            )
+                            .then((_) {}, onError: (e) {
+                          // Ignore persistence errors for now
+                        });
+                      }
                     } else {
                       setState(() {
                         _isStreaming = false;
@@ -354,12 +485,14 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
             if (shouldStop) break;
           }
           
-          timeoutTimer?.cancel();
+          timeoutTimer.cancel();
         } on TimeoutException {
           timeoutTimer?.cancel();
-        } catch (e, stackTrace) {
+        } catch (e) {
           debugPrint('[FE STREAM] ❌ Error reading stream: $e');
-          timeoutTimer?.cancel();
+          if (timeoutTimer != null) {
+            timeoutTimer.cancel();
+          }
         } finally {
           // Always stop streaming when stream ends, regardless of [DONE] signal
           if (mounted) {
@@ -412,159 +545,209 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
         title: const Text('Vreau să rezolv o problemă'),
         centerTitle: true,
       ),
-      body: Column(
+      drawer: const ProfuDrawer(),
+      body: Row(
         children: [
-          // Chat messages
+          ConversationSidebar(
+            type: ConversationType.problemSolving,
+            selectedConversation: _activeConversation,
+            onConversationSelected: (conversation) {
+              if (conversation == null) {
+                setState(() {
+                  _activeConversation = null;
+                  _conversationId = null;
+                  _messages.clear();
+                  _isStreaming = false;
+                });
+              } else {
+                _loadConversationHistory(conversation);
+              }
+            },
+          ),
           Expanded(
-            child: _messages.isEmpty && _selectedImage == null && _selectedImageBytes == null
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.image_outlined,
-                          size: 80,
-                          color: Colors.green.withOpacity(0.5),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Încarcă o poză cu problema pe care vrei să o rezolvi!',
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                color: Colors.grey[600],
-                              ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton.icon(
-                          onPressed: _pickImage,
-                          icon: const Icon(Icons.upload_file),
-                          label: const Text('Încarcă imagine'),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length + ((_selectedImage != null || _selectedImageBytes != null) ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      // Show image preview at the beginning
-                      if (index == 0 && (_selectedImage != null || _selectedImageBytes != null)) {
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 12),
+            child: Column(
+              children: [
+                if (_isLoadingHistory)
+                  const LinearProgressIndicator(minHeight: 2),
+                // Chat messages
+                Expanded(
+                  child: _messages.isEmpty &&
+                          _selectedImage == null &&
+                          _selectedImageBytes == null
+                      ? Center(
                           child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Text(
-                                'Imaginea problemei:',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600],
-                                ),
+                              Icon(
+                                Icons.image_outlined,
+                                size: 80,
+                                color: Colors.green.withOpacity(0.5),
                               ),
-                              const SizedBox(height: 8),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: kIsWeb && _selectedImageBytes != null
-                                    ? Image.memory(
-                                        _selectedImageBytes!,
-                                        width: double.infinity,
-                                        height: 200,
-                                        fit: BoxFit.contain,
-                                      )
-                                    : _selectedImage != null
-                                        ? Image.file(
-                                            _selectedImage!,
-                                            width: double.infinity,
-                                            height: 200,
-                                            fit: BoxFit.contain,
-                                          )
-                                        : const SizedBox.shrink(),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Încarcă o poză cu problema pe care vrei să o rezolvi!',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge
+                                    ?.copyWith(
+                                      color: Colors.grey[600],
+                                    ),
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 24),
+                              ElevatedButton.icon(
+                                onPressed: _pickImage,
+                                icon: const Icon(Icons.upload_file),
+                                label: const Text('Încarcă imagine'),
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 24,
+                                    vertical: 12,
+                                  ),
+                                ),
                               ),
                             ],
                           ),
-                        );
-                      }
-                      
-                      // Adjust index for messages
-                      final hasImage = _selectedImage != null || _selectedImageBytes != null;
-                      final messageIndex = hasImage ? index - 1 : index;
-                      if (messageIndex < 0 || messageIndex >= _messages.length) {
-                        return const SizedBox.shrink();
-                      }
-                      
-                      return _buildMessageBubble(_messages[messageIndex], key: ValueKey('msg_${messageIndex}_${_messages[messageIndex].timestamp.millisecondsSinceEpoch}_${_messages[messageIndex].isStreaming}'));
-                    },
+                        )
+                      : ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _messages.length +
+                              ((_selectedImage != null ||
+                                      _selectedImageBytes != null)
+                                  ? 1
+                                  : 0),
+                          itemBuilder: (context, index) {
+                            // Show image preview at the beginning
+                            if (index == 0 &&
+                                (_selectedImage != null ||
+                                    _selectedImageBytes != null)) {
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Imaginea problemei:',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: kIsWeb && _selectedImageBytes != null
+                                          ? Image.memory(
+                                              _selectedImageBytes!,
+                                              width: double.infinity,
+                                              height: 200,
+                                              fit: BoxFit.contain,
+                                            )
+                                          : _selectedImage != null
+                                              ? Image.file(
+                                                  _selectedImage!,
+                                                  width: double.infinity,
+                                                  height: 200,
+                                                  fit: BoxFit.contain,
+                                                )
+                                              : const SizedBox.shrink(),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+
+                            // Adjust index for messages
+                            final hasImage = _selectedImage != null ||
+                                _selectedImageBytes != null;
+                            final messageIndex = hasImage ? index - 1 : index;
+                            if (messageIndex < 0 ||
+                                messageIndex >= _messages.length) {
+                              return const SizedBox.shrink();
+                            }
+
+                            return _buildMessageBubble(
+                              _messages[messageIndex],
+                              key: ValueKey(
+                                'msg_${messageIndex}_${_messages[messageIndex].timestamp.millisecondsSinceEpoch}_${_messages[messageIndex].isStreaming}',
+                              ),
+                            );
+                          },
+                        ),
+                ),
+                // Input area
+                Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
                   ),
-          ),
-          // Input area
-          Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, -2),
+                  padding: const EdgeInsets.all(16),
+                  child: SafeArea(
+                    child: Row(
+                      children: [
+                        // Image upload button (only show if no image uploaded yet)
+                        if (_selectedImage == null &&
+                            _selectedImageBytes == null)
+                          IconButton(
+                            onPressed:
+                                _isStreaming || _isLoadingHistory ? null : _pickImage,
+                            icon: const Icon(Icons.image_outlined),
+                            tooltip: 'Încarcă imagine',
+                          ),
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            decoration: InputDecoration(
+                              hintText: _problemText == null
+                                  ? 'Încarcă mai întâi o imagine...'
+                                  : 'Scrie mesajul tău...',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 20,
+                                vertical: 12,
+                              ),
+                            ),
+                            maxLines: null,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) =>
+                                _sendMessage(_messageController.text),
+                            enabled: !_isStreaming &&
+                                _problemText != null &&
+                                !_isLoadingHistory,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FloatingActionButton(
+                          onPressed: _isStreaming ||
+                                  _problemText == null ||
+                                  _isLoadingHistory
+                              ? null
+                              : () => _sendMessage(_messageController.text),
+                          child: _isStreaming
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.send),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
-            ),
-            padding: const EdgeInsets.all(16),
-            child: SafeArea(
-              child: Row(
-                children: [
-                  // Image upload button (only show if no image uploaded yet)
-                  if (_selectedImage == null && _selectedImageBytes == null)
-                    IconButton(
-                      onPressed: _isStreaming ? null : _pickImage,
-                      icon: const Icon(Icons.image_outlined),
-                      tooltip: 'Încarcă imagine',
-                    ),
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: InputDecoration(
-                        hintText: _problemText == null
-                            ? 'Încarcă mai întâi o imagine...'
-                            : 'Scrie mesajul tău...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
-                      ),
-                      maxLines: null,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendMessage(_messageController.text),
-                      enabled: !_isStreaming && _problemText != null,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  FloatingActionButton(
-                    onPressed: _isStreaming || _problemText == null
-                        ? null
-                        : () => _sendMessage(_messageController.text),
-                    child: _isStreaming
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.send),
-                  ),
-                ],
-              ),
             ),
           ),
         ],

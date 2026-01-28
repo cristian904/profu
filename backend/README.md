@@ -18,9 +18,10 @@ poetry install
 cp .env.example .env
 ```
 
-3. Add your Google API Key to the `.env` file:
+3. Add your Google API Key and (optional) database URL to the `.env` file:
 ```
 GOOGLE_API_KEY=your_actual_gemini_api_key_here
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/profu
 ```
 
 To get a Google API key:
@@ -77,18 +78,45 @@ AI prompts are configured in `profu_backend/prompts.yaml`. You can customize:
 
 Edit `prompts.yaml` to modify the AI's behavior without changing code.
 
+## Database (PostgreSQL)
+
+1. Create a PostgreSQL database (e.g. `profu`).
+2. Run the initial schema script:
+   ```bash
+   psql -U postgres -d profu -f sql/init.sql
+   ```
+   Or use the Supabase SQL Editor and paste the contents of `sql/init.sql`. See `sql/README.md` for details.
+3. Set `DATABASE_URL` in `.env` to a `postgresql+asyncpg://...` URL.
+
+The backend uses SQLAlchemy 2.0 async (asyncpg) for all DB operations. Models live in `profu_backend/models/`, Pydantic schemas in `profu_backend/schemas/`. CRUD routers can be added under `profu_backend/routers/` and wired in `main.py`.
+
 ## Project Structure
 
 ```
 backend/
 ├── profu_backend/
 │   ├── main.py              # FastAPI application entry point
+│   ├── database.py          # Async engine, session, get_db dependency
 │   ├── prompts.yaml         # AI prompt configurations
+│   ├── models/              # SQLAlchemy ORM models
+│   │   ├── user.py
+│   │   ├── exam_problem.py
+│   │   ├── conversation.py
+│   │   ├── exam_simulation.py
+│   │   ├── exam_grade.py
+│   │   └── scoring_scale.py
+│   ├── schemas/             # Pydantic request/response schemas
+│   │   ├── user.py
+│   │   ├── exam_problem.py
+│   │   └── ...
 │   └── routers/             # API route modules (organized by feature)
 │       ├── __init__.py
 │       ├── common.py               # Shared utilities (LLM, models, prompts)
 │       ├── clarify_once.py         # Direct answer mode endpoint
-│       └── clarify_step_by_step.py # Step-by-step learning endpoint
+│       └── clarify_with_steps.py   # Step-by-step learning endpoint
+├── sql/
+│   ├── init.sql             # Initial PostgreSQL schema (run this yourself)
+│   └── README.md            # How to run init.sql
 ├── tests/                          # Unit and integration tests
 │   ├── __init__.py
 │   ├── test_main.py

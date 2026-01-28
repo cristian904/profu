@@ -40,6 +40,16 @@ poetry run uvicorn profu_backend.main:app --reload
 
 The backend will be available at `http://localhost:8000`
 
+### Local Supabase (optional, for CRUD data)
+
+To run Supabase locally with Docker for users, conversations, exam problems, etc.:
+
+1. From the repo root: `npm install` then `npx supabase start`.
+2. Open Supabase Studio at the URL shown (e.g. `http://127.0.0.1:54323`).
+3. In the Flutter app, set the Supabase URL and anon key in `flutter_app/lib/main.dart` (from the `npx supabase start` output).
+
+See [supabase/README.md](supabase/README.md) for details.
+
 ### Frontend Setup
 
 1. Navigate to Flutter app directory:
