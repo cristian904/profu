@@ -1,9 +1,21 @@
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'pages/clarify_chat_page.dart';
-import 'pages/solve_problem_page.dart';
+import "package:flutter/material.dart";
+import "package:http/http.dart" as http;
+import "package:supabase_flutter/supabase_flutter.dart";
+import "pages/clarify_chat_page.dart";
+import "pages/solve_problem_page.dart";
 
-void main() {
+/// Local Supabase URL and anon key. After running `npx supabase start` in the
+/// repo root, copy the API URL and anon key from the CLI output (or from
+/// supabase/.temp/env) and replace these placeholders.
+const String _supabaseUrl = "http://127.0.0.1:54321";
+const String _supabaseAnonKey = "YOUR_ANON_KEY"; // Replace with output of: npx supabase start
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Supabase.initialize(
+    url: _supabaseUrl,
+    anonKey: _supabaseAnonKey,
+  );
   runApp(const ProfuApp());
 }
 

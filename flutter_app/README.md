@@ -79,9 +79,18 @@ The streaming is implemented using Server-Sent Events (SSE) for real-time token 
 
 ## Configuration
 
+### Backend (FastAPI)
 To change the backend URL, edit the `_apiUrl` variable in:
-- `lib/main.dart` (line 38)
-- `lib/pages/clarify_chat_page.dart` (line 18)
+- `lib/main.dart` (landing page)
+- `lib/pages/clarify_chat_page.dart`
+- `lib/pages/solve_problem_page.dart`
+
+### Supabase (local)
+The app uses Supabase for CRUD (users, conversations, exam problems, etc.). For local development:
+
+1. From the repo root, run `npm install` then `npx supabase start` (see `../supabase/README.md`).
+2. In `lib/main.dart`, set `_supabaseUrl` and `_supabaseAnonKey` to the API URL and anon key printed by `npx supabase start`.
+3. Use `Supabase.instance.client` in your code for table access (e.g. `supabase.from('exam_problems').select()`).
 
 ## Testing
 

@@ -7,6 +7,10 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:math_expressions/math_expressions.dart';
 
+import '../models/conversation_models.dart';
+import '../services/conversation_repository.dart';
+import '../widgets/conversation_sidebar.dart';
+
 class ClarifyChatPage extends StatefulWidget {
   const ClarifyChatPage({super.key});
 
@@ -69,6 +73,11 @@ class _ExplicaTabState extends State<ExplicaTab> {
   final List<ChatMessage> _messages = [];
   bool _isStreaming = false;
 
+  final ConversationRepository _conversationRepository = ConversationRepository();
+  Conversation? _activeConversation;
+  int? _conversationId;
+  bool _isLoadingHistory = false;
+
   final String _apiUrl = 'http://localhost:8000/clarify/once-stream';
 
   @override
@@ -90,6 +99,64 @@ class _ExplicaTabState extends State<ExplicaTab> {
     });
   }
 
+  Future<void> _ensureConversationCreated(String firstUserMessage) async {
+    if (_conversationId != null) return;
+
+    final title = firstUserMessage.trim().isEmpty
+        ? null
+        : (firstUserMessage.trim().length > 80
+            ? '${firstUserMessage.trim().substring(0, 80)}...'
+            : firstUserMessage.trim());
+
+    final conv = await _conversationRepository.createConversation(
+      type: ConversationType.clarify,
+      title: title,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _activeConversation = conv;
+      _conversationId = conv.id;
+    });
+  }
+
+  Future<void> _loadConversationHistory(Conversation conversation) async {
+    setState(() {
+      _isLoadingHistory = true;
+      _isStreaming = false;
+    });
+
+    try {
+      final messages = await _conversationRepository.listMessages(
+        conversationId: conversation.id,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(
+            messages.map(
+              (m) => ChatMessage(
+                text: m.content ?? '',
+                isUser: m.speaker == ConversationSpeaker.user,
+                timestamp: m.createdAt,
+              ),
+            ),
+          );
+        _activeConversation = conversation;
+        _conversationId = conversation.id;
+      });
+      _scrollToBottom();
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingHistory = false;
+      });
+    }
+  }
+
   Future<void> _sendMessage() async {
     final message = _messageController.text.trim();
     if (message.isEmpty || _isStreaming) return;
@@ -106,6 +173,30 @@ class _ExplicaTabState extends State<ExplicaTab> {
 
     _messageController.clear();
     _scrollToBottom();
+
+    // Ensure a conversation exists for this thread
+    try {
+      await _ensureConversationCreated(message);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Nu am putut crea conversația: $e')),
+        );
+      }
+    }
+
+    // Fire-and-forget: store the user message
+    if (_conversationId != null) {
+      _conversationRepository
+          .createMessage(
+            conversationId: _conversationId!,
+            speaker: ConversationSpeaker.user,
+            content: message,
+          )
+          .then((_) {}, onError: (e) {
+        // Only log; do not break the chat flow
+      });
+    }
 
     // Add placeholder for AI response
     final aiMessageIndex = _messages.length;
@@ -148,13 +239,27 @@ class _ExplicaTabState extends State<ExplicaTab> {
           // Parse SSE format
           final lines = chunk.split('\n');
           for (var line in lines) {
-            if (line.startsWith('data: ')) {
-              final data = line.substring(6);
-              if (data == '[DONE]') {
-                setState(() {
-                  _messages[aiMessageIndex].isStreaming = false;
-                  _isStreaming = false;
-                });
+              if (line.startsWith('data: ')) {
+                final data = line.substring(6);
+                if (data == '[DONE]') {
+                  setState(() {
+                    _messages[aiMessageIndex].isStreaming = false;
+                    _isStreaming = false;
+                  });
+
+                  // Store full assistant message after streaming finishes
+                  final fullText = accumulatedText;
+                  if (_conversationId != null && fullText.trim().isNotEmpty) {
+                    _conversationRepository
+                        .createMessage(
+                          conversationId: _conversationId!,
+                          speaker: ConversationSpeaker.assistant,
+                          content: fullText,
+                        )
+                        .then((_) {}, onError: (e) {
+                      // Ignore persistence errors for now
+                    });
+                  }
               } else if (data.startsWith('[META]')) {
                 // Parse metadata (time to first token)
                 try {
@@ -198,95 +303,123 @@ class _ExplicaTabState extends State<ExplicaTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-        children: [
-          // Chat messages
-          Expanded(
-            child: _messages.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.help_outline,
-                          size: 80,
-                          color: Colors.orange.withOpacity(0.5),
+    return Row(
+      children: [
+        ConversationSidebar(
+          type: ConversationType.clarify,
+          selectedConversation: _activeConversation,
+          onConversationSelected: (conversation) {
+            if (conversation == null) {
+              setState(() {
+                _activeConversation = null;
+                _conversationId = null;
+                _messages.clear();
+                _isStreaming = false;
+              });
+            } else {
+              _loadConversationHistory(conversation);
+            }
+          },
+        ),
+        Expanded(
+          child: Column(
+            children: [
+              if (_isLoadingHistory)
+                const LinearProgressIndicator(minHeight: 2),
+              // Chat messages
+              Expanded(
+                child: _messages.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.help_outline,
+                              size: 80,
+                              color: Colors.orange.withOpacity(0.5),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Pune o întrebare despre ce nu ai înțeles!',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyLarge
+                                  ?.copyWith(
+                                    color: Colors.grey[600],
+                                  ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Pune o întrebare despre ce nu ai înțeles!',
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                color: Colors.grey[600],
-                              ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
+                          return _buildMessageBubble(_messages[index]);
+                        },
+                      ),
+              ),
+              // Input area
+              Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, -2),
                     ),
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _messages.length,
-                    itemBuilder: (context, index) {
-                      return _buildMessageBubble(_messages[index]);
-                    },
-                  ),
-          ),
-          // Input area
-          Container(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, -2),
+                  ],
                 ),
-              ],
-            ),
-            padding: const EdgeInsets.all(16),
-            child: SafeArea(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      decoration: InputDecoration(
-                        hintText: 'Scrie mesajul tău...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
+                padding: const EdgeInsets.all(16),
+                child: SafeArea(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _messageController,
+                          decoration: InputDecoration(
+                            hintText: 'Scrie mesajul tău...',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                          ),
+                          maxLines: null,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _sendMessage(),
+                          enabled: !_isStreaming && !_isLoadingHistory,
                         ),
                       ),
-                      maxLines: null,
-                      textInputAction: TextInputAction.send,
-                      onSubmitted: (_) => _sendMessage(),
-                      enabled: !_isStreaming,
-                    ),
+                      const SizedBox(width: 8),
+                      FloatingActionButton(
+                        onPressed:
+                            _isStreaming || _isLoadingHistory ? null : _sendMessage,
+                        child: _isStreaming
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.send),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  FloatingActionButton(
-                    onPressed: _isStreaming ? null : _sendMessage,
-                    child: _isStreaming
-                        ? const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.send),
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
-      );
+        ),
+      ],
+    );
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
@@ -457,6 +590,11 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
   final List<ChatMessage> _messages = [];
   bool _isStreaming = false;
 
+  final ConversationRepository _conversationRepository = ConversationRepository();
+  Conversation? _activeConversation;
+  int? _conversationId;
+  bool _isLoadingHistory = false;
+
   final String _apiUrl = 'http://localhost:8000/clarify/step-by-step-stream';
 
   @override
@@ -478,6 +616,64 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
     });
   }
 
+  Future<void> _ensureConversationCreated(String firstUserMessage) async {
+    if (_conversationId != null) return;
+
+    final title = firstUserMessage.trim().isEmpty
+        ? null
+        : (firstUserMessage.trim().length > 80
+            ? '${firstUserMessage.trim().substring(0, 80)}...'
+            : firstUserMessage.trim());
+
+    final conv = await _conversationRepository.createConversation(
+      type: ConversationType.clarifySteps,
+      title: title,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _activeConversation = conv;
+      _conversationId = conv.id;
+    });
+  }
+
+  Future<void> _loadConversationHistory(Conversation conversation) async {
+    setState(() {
+      _isLoadingHistory = true;
+      _isStreaming = false;
+    });
+
+    try {
+      final messages = await _conversationRepository.listMessages(
+        conversationId: conversation.id,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(
+            messages.map(
+              (m) => ChatMessage(
+                text: m.content ?? '',
+                isUser: m.speaker == ConversationSpeaker.user,
+                timestamp: m.createdAt,
+              ),
+            ),
+          );
+        _activeConversation = conversation;
+        _conversationId = conversation.id;
+      });
+      _scrollToBottom();
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingHistory = false;
+      });
+    }
+  }
+
   Future<void> _sendMessage() async {
     final message = _messageController.text.trim();
     if (message.isEmpty || _isStreaming) return;
@@ -494,6 +690,30 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
 
     _messageController.clear();
     _scrollToBottom();
+
+    // Ensure a conversation exists for this thread
+    try {
+      await _ensureConversationCreated(message);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Nu am putut crea conversația: $e')),
+        );
+      }
+    }
+
+    // Fire-and-forget: store the user message
+    if (_conversationId != null) {
+      _conversationRepository
+          .createMessage(
+            conversationId: _conversationId!,
+            speaker: ConversationSpeaker.user,
+            content: message,
+          )
+          .then((_) {}, onError: (e) {
+        // Only log; do not break the chat flow
+      });
+    }
 
     // Add placeholder for AI response
     final aiMessageIndex = _messages.length;
@@ -536,13 +756,27 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
           // Parse SSE format
           final lines = chunk.split('\n');
           for (var line in lines) {
-            if (line.startsWith('data: ')) {
-              final data = line.substring(6);
-              if (data == '[DONE]') {
-                setState(() {
-                  _messages[aiMessageIndex].isStreaming = false;
-                  _isStreaming = false;
-                });
+              if (line.startsWith('data: ')) {
+                final data = line.substring(6);
+                if (data == '[DONE]') {
+                  setState(() {
+                    _messages[aiMessageIndex].isStreaming = false;
+                    _isStreaming = false;
+                  });
+
+                  // Store full assistant message after streaming finishes
+                  final fullText = accumulatedText;
+                  if (_conversationId != null && fullText.trim().isNotEmpty) {
+                    _conversationRepository
+                        .createMessage(
+                          conversationId: _conversationId!,
+                          speaker: ConversationSpeaker.assistant,
+                          content: fullText,
+                        )
+                        .then((_) {}, onError: (e) {
+                      // Ignore persistence errors for now
+                    });
+                  }
               } else if (data.startsWith('[META]')) {
                 // Parse metadata (time to first token)
                 try {
@@ -586,94 +820,123 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Row(
       children: [
-        // Chat messages
+        ConversationSidebar(
+          type: ConversationType.clarifySteps,
+          selectedConversation: _activeConversation,
+          onConversationSelected: (conversation) {
+            if (conversation == null) {
+              setState(() {
+                _activeConversation = null;
+                _conversationId = null;
+                _messages.clear();
+                _isStreaming = false;
+              });
+            } else {
+              _loadConversationHistory(conversation);
+            }
+          },
+        ),
         Expanded(
-          child: _messages.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.school_outlined,
-                        size: 80,
-                        color: Colors.orange.withOpacity(0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 32),
-                        child: Text(
-                          'Pune o întrebare și te voi ghida pas cu pas să înțelegi conceptul!',
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                color: Colors.grey[600],
+          child: Column(
+            children: [
+              if (_isLoadingHistory)
+                const LinearProgressIndicator(minHeight: 2),
+              // Chat messages
+              Expanded(
+                child: _messages.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.school_outlined,
+                              size: 80,
+                              color: Colors.orange.withOpacity(0.5),
+                            ),
+                            const SizedBox(height: 16),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 32),
+                              child: Text(
+                                'Pune o întrebare și te voi ghida pas cu pas să înțelegi conceptul!',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodyLarge
+                                    ?.copyWith(
+                                      color: Colors.grey[600],
+                                    ),
+                                textAlign: TextAlign.center,
                               ),
-                          textAlign: TextAlign.center,
+                            ),
+                          ],
                         ),
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
+                          return _buildMessageBubble(_messages[index]);
+                        },
+                      ),
+              ),
+              // Input area
+              Container(
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.all(16),
+                child: SafeArea(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _messageController,
+                          decoration: InputDecoration(
+                            hintText: 'Scrie mesajul tău...',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                          ),
+                          maxLines: null,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _sendMessage(),
+                          enabled: !_isStreaming && !_isLoadingHistory,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FloatingActionButton(
+                        onPressed:
+                            _isStreaming || _isLoadingHistory ? null : _sendMessage,
+                        child: _isStreaming
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.send),
                       ),
                     ],
                   ),
-                )
-              : ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _messages.length,
-                  itemBuilder: (context, index) {
-                    return _buildMessageBubble(_messages[index]);
-                  },
                 ),
-        ),
-        // Input area
-        Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 4,
-                offset: const Offset(0, -2),
               ),
             ],
-          ),
-          padding: const EdgeInsets.all(16),
-          child: SafeArea(
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: InputDecoration(
-                      hintText: 'Scrie mesajul tău...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
-                      ),
-                    ),
-                    maxLines: null,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _sendMessage(),
-                    enabled: !_isStreaming,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FloatingActionButton(
-                  onPressed: _isStreaming ? null : _sendMessage,
-                  child: _isStreaming
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.send),
-                ),
-              ],
-            ),
           ),
         ),
       ],

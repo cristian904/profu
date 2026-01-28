@@ -28,3 +28,11 @@ uv.lock
 # OS
 .DS_Store
 Thumbs.db
+
+# Node / Supabase
+node_modules/
+supabase/.temp
+package-lock.json
+
+# Flutter / Dart config
+flutter_app/lib/supabase_rest_config.dart

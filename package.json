@@ -1,0 +1,27 @@
+{
+  "name": "profu",
+  "version": "1.0.0",
+  "description": "![Backend Tests](https://github.com/YOUR_USERNAME/profu/actions/workflows/backend-tests.yml/badge.svg) ![Frontend Tests](https://github.com/YOUR_USERNAME/profu/actions/workflows/frontend-tests.yml/badge.svg) ![CI Pipeline](https://github.com/YOUR_USERNAME/profu/actions/workflows/ci.yml/badge.svg)",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cristian904/profu.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/cristian904/profu/issues"
+  },
+  "homepage": "https://github.com/cristian904/profu#readme",
+  "devDependencies": {
+    "supabase": "^2.15.0"
+  }
+}
