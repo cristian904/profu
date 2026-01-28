@@ -10,6 +10,7 @@ import 'package:math_expressions/math_expressions.dart';
 import '../models/conversation_models.dart';
 import '../services/conversation_repository.dart';
 import '../widgets/conversation_sidebar.dart';
+import '../widgets/profu_drawer.dart';
 
 class ClarifyChatPage extends StatefulWidget {
   const ClarifyChatPage({super.key});
@@ -48,6 +49,7 @@ class _ClarifyChatPageState extends State<ClarifyChatPage> with SingleTickerProv
           ],
         ),
       ),
+      drawer: const ProfuDrawer(),
       body: TabBarView(
         controller: _tabController,
         children: const [

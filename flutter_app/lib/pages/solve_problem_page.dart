@@ -15,6 +15,7 @@ import 'dart:async' show Timer, TimeoutException;
 import '../models/conversation_models.dart';
 import '../services/conversation_repository.dart';
 import '../widgets/conversation_sidebar.dart';
+import '../widgets/profu_drawer.dart';
 
 class SolveProblemPage extends StatefulWidget {
   const SolveProblemPage({super.key});
@@ -544,6 +545,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
         title: const Text('Vreau să rezolv o problemă'),
         centerTitle: true,
       ),
+      drawer: const ProfuDrawer(),
       body: Row(
         children: [
           ConversationSidebar(
