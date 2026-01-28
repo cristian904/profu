@@ -1,6 +1,6 @@
 # Profu - Implemented Features
 
-**Last Updated:** January 26, 2026
+**Last Updated:** January 28, 2026
 
 This document provides a business-level overview of all features currently implemented in Profu. It serves as a living record of the application's capabilities and should be updated whenever new features are added or existing functionality changes significantly.
 
@@ -86,6 +86,72 @@ A dual-mode AI tutoring system that helps students understand concepts they didn
 - 24/7 availability without scheduling constraints
 - Consistent quality explanations across all topics
 - Cost-effective compared to traditional tutoring (target: <50 RON/month vs 400-600 RON/month)
+
+---
+
+## 💾 Supabase Integration & Conversation History
+
+### January 28, 2026 - Persistent Conversations via Supabase
+
+**What Changed:**
+- **Supabase backend integration:**
+  - Added a local Supabase project to manage structured data (users, conversations, simulations, etc.).
+  - Flutter app talks directly to Supabase REST API for conversation storage (configurable URL + API key).
+  - All Supabase credentials and URLs are centralized in a single Flutter config file for easy environment switching.
+
+- **Database schema for tutoring flows:**
+  - `users`: core user profile (email, name, study_year, auth linkage).
+  - `conversations`: one row per tutoring thread, with:
+    - `user_id` – owner of the conversation.
+    - `type` – one of:
+      - `problem_solving` – “Vreau să rezolv o problemă”.
+      - `clarify` – Clarify Once (direct explanation).
+      - `clarify_steps` – Clarify Step-by-Step (guided learning).
+    - `title`, `school_subject`, `created_at` metadata.
+  - `conversation_messages`:
+    - One row per message in a conversation.
+    - `speaker` field distinguishes `user` vs `assistant` messages.
+    - Stores the full message content and timestamp.
+  - Additional tables prepared for future exam simulation flows:
+    - `exam_problems`, `exam_simulations`, `exam_simulation_problems`,
+      `exam_grades`, `scoring_scales`.
+
+- **Row Level Security (RLS):**
+  - Conversations and messages are protected so a user can only see/update
+    their own data (via Supabase `auth_id` → `users` mapping).
+  - For local testing, all conversations are currently written under `user_id = 1`,
+    but the policies are ready for real authentication.
+
+**Conversation Experience in the App:**
+- **Unified conversation history sidebar:**
+  - Each major AI flow now has a sidebar showing previous conversations:
+    - “N-am înțeles la clasă” → tabs use `clarify` / `clarify_steps`.
+    - “Vreau să rezolv o problemă” → uses `problem_solving`.
+  - Students can:
+    - Browse past conversations per mode.
+    - Click to load the full message history into the current chat.
+    - Edit conversation titles directly from the sidebar
+      (updates the `title` column in Supabase).
+
+- **When conversations are created & saved:**
+  - **Clarify Once / Step-by-Step:**
+    - A new conversation is created only when the student sends the *first* message
+      in a blank chat.
+    - That first user message is stored as a `user` message in `conversation_messages`.
+    - Each full AI response (after streaming completes) is stored as an `assistant` message.
+  - **Vreau să rezolv o problemă:**
+    - The conversation is created when the image is processed and the AI sends
+      the first assistant message based on the OCR result.
+    - That initial assistant message becomes the first stored message of the conversation.
+    - All subsequent user questions and AI responses are appended to the same conversation.
+
+**Business Impact:**
+- Students can **return to previous sessions** instead of starting from scratch every time.
+- Teachers/parents (future) can review how a student interacted with the tutor over time.
+- Enables future analytics:
+  - Time spent per topic.
+  - Common misconceptions per user or cohort.
+  - Quality monitoring of assistant responses.
 
 ---
 
