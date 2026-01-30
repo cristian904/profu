@@ -36,3 +36,6 @@ package-lock.json
 
 # Flutter / Dart config
 flutter_app/lib/supabase_rest_config.dart
+
+# Crawler downloads
+backend/crawler/downloads/
