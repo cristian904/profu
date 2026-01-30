@@ -33,15 +33,15 @@ jobs:
       id: cached-poetry-dependencies
       uses: actions/cache@v4
       with:
-        path: backend/.venv
+        path: backend/ai_backend/.venv
         key: venv-${{ runner.os }}-3.13-${{ hashFiles('**/poetry.lock') }}
     
     - name: Install dependencies
       if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-      run: poetry install --no-interaction --with dev
+      run: cd ai_backend && poetry install --no-interaction --with dev
     
     - name: Run backend tests
-      run: poetry run pytest -v --cov=profu_backend --cov-report=xml
+      run: ai_backend/.venv/bin/python -m pytest -v --cov=ai_backend --cov-report=xml
       env:
         GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY || 'test_key_for_ci' }}
     

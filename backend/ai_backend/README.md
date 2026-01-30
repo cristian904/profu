@@ -7,13 +7,13 @@
 
 ## Installation
 
-1. Install dependencies:
+1. From the repo root, go to this directory and install dependencies:
 ```bash
-cd backend
+cd backend/ai_backend
 poetry install
 ```
 
-2. Create a `.env` file in the `backend` directory:
+2. Create a `.env` file in this directory (`backend/ai_backend`):
 ```bash
 cp .env.example .env
 ```
@@ -32,7 +32,7 @@ To get a Google API key:
 ## Running the Server
 
 ```bash
-poetry run uvicorn profu_backend.main:app --reload
+poetry run uvicorn ai_backend.main:app --reload
 ```
 
 The API will be available at `http://localhost:8000`
@@ -70,7 +70,7 @@ Returns application description
 ## Configuration
 
 ### Prompts
-AI prompts are configured in `profu_backend/prompts.yaml`. You can customize:
+AI prompts are configured in `ai_backend/prompts.yaml`. You can customize:
 - System prompts for different chat types
 - Instructions for formatting (Markdown, LaTeX, graphs)
 - Educational tone and approach
@@ -88,13 +88,13 @@ Edit `prompts.yaml` to modify the AI's behavior without changing code.
    Or use the Supabase SQL Editor and paste the contents of `sql/init.sql`. See `sql/README.md` for details.
 3. Set `DATABASE_URL` in `.env` to a `postgresql+asyncpg://...` URL.
 
-The backend uses SQLAlchemy 2.0 async (asyncpg) for all DB operations. Models live in `profu_backend/models/`, Pydantic schemas in `profu_backend/schemas/`. CRUD routers can be added under `profu_backend/routers/` and wired in `main.py`.
+The backend uses SQLAlchemy 2.0 async (asyncpg) for all DB operations. Models live in `ai_backend/models/`, Pydantic schemas in `ai_backend/schemas/`. CRUD routers can be added under `ai_backend/routers/` and wired in `main.py`.
 
 ## Project Structure
 
 ```
 backend/
-├── profu_backend/
+├── ai_backend/
 │   ├── main.py              # FastAPI application entry point
 │   ├── database.py          # Async engine, session, get_db dependency
 │   ├── prompts.yaml         # AI prompt configurations
@@ -112,25 +112,27 @@ backend/
 │   └── routers/             # API route modules (organized by feature)
 │       ├── __init__.py
 │       ├── common.py               # Shared utilities (LLM, models, prompts)
-│       ├── clarify_once.py         # Direct answer mode endpoint
-│       └── clarify_with_steps.py   # Step-by-step learning endpoint
+│       ├── clarify_once.py        # Direct answer mode endpoint
+│       └── clarify_with_steps.py  # Step-by-step learning endpoint
+│   ├── pyproject.toml       # Poetry dependencies (project root)
+│   ├── poetry.lock
+│   ├── .env                 # Environment variables (not in git)
+│   ├── .env.example         # Environment variables template
+│   └── tests/               # Unit and integration tests
+│       ├── __init__.py
+│       ├── test_main.py
+│       ├── test_clarify.py   # Tests for both clarify modes
+│       └── test_integration.py
 ├── sql/
 │   ├── init.sql             # Initial PostgreSQL schema (run this yourself)
 │   └── README.md            # How to run init.sql
-├── tests/                          # Unit and integration tests
-│   ├── __init__.py
-│   ├── test_main.py
-│   ├── test_clarify.py             # Tests for both clarify modes
-│   └── test_integration.py
-├── pyproject.toml           # Poetry dependencies
-├── .env                     # Environment variables (not in git)
-└── .env.example            # Environment variables template
+└── pytest.ini               # Pytest config (run tests from backend/)
 ```
 
 ### Adding New Features
 
 To add a new feature router:
-1. Create a new file in `profu_backend/routers/` (e.g., `hints.py`)
+1. Create a new file in `ai_backend/routers/` (e.g., `hints.py`)
 2. Import shared utilities from `common.py` if needed:
    ```python
    from .common import get_llm, QueryRequest, PROMPTS
@@ -166,36 +168,37 @@ Both modes share common utilities from `common.py` including:
 
 ### Running Tests
 
-The backend includes comprehensive unit and integration tests.
+The backend includes comprehensive unit and integration tests. Tests live in `backend/ai_backend/tests/`; `pytest.ini` is in `backend/`. Run them from the **backend** directory using the venv created by Poetry in `ai_backend`:
 
-Install test dependencies:
+From repo root:
 ```bash
-poetry install --with dev
+cd backend
+ai_backend/.venv/bin/python -m pytest
+```
+(On Windows: `ai_backend\.venv\Scripts\python.exe -m pytest`)
+
+Run with coverage:
+```bash
+ai_backend/.venv/bin/python -m pytest --cov=ai_backend --cov-report=html
 ```
 
-Run all tests:
+Run a specific test file:
 ```bash
-poetry run pytest
-```Run tests with coverage:
-```bash
-poetry run pytest --cov=profu_backend --cov-report=html
+ai_backend/.venv/bin/python -m pytest ai_backend/tests/test_main.py
 ```
 
-Run specific test file:
+Run by marker:
 ```bash
-poetry run pytest tests/test_main.py
-```
-
-Run tests by marker:
-```bash
-poetry run pytest -m unit
-poetry run pytest -m integration
+ai_backend/.venv/bin/python -m pytest -m unit
+ai_backend/.venv/bin/python -m pytest -m integration
 ```
 
 ### Test Structure
 
+Tests live in `ai_backend/tests/` (when running from `backend/`):
+
 ```
-tests/
+ai_backend/tests/
 ├── __init__.py
 ├── test_main.py          # Core app endpoint tests
 ├── test_clarify.py       # Tests for clarify_once and clarify_step_by_step routers

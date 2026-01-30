@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "profu_backend"
+name = "ai_backend"
 version = "1.0.0"
 description = "FastAPI backend for the Profu application"
 authors = ["Your Name <your.email@example.com>"]

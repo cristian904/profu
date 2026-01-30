@@ -5,7 +5,7 @@ Tests both Clarify Once and Clarify Step-by-Step streaming endpoints.
 import pytest
 from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
-from profu_backend.main import app
+from ai_backend.main import app
 
 client = TestClient(app)
 
@@ -13,7 +13,7 @@ client = TestClient(app)
 class TestStreamingIntegration:
     """Integration tests for SSE streaming (Clarify Once mode)."""
     
-    @patch('profu_backend.routers.clarify_once.get_llm')
+    @patch('ai_backend.routers.clarify_once.get_llm')
     def test_stream_response_format(self, mock_get_llm):
         """Test that streaming response follows SSE format."""
         # Mock LLM to return test chunks
@@ -34,7 +34,7 @@ class TestStreamingIntegration:
         assert "cache-control" in response.headers
         assert response.headers["cache-control"] == "no-cache"
     
-    @patch('profu_backend.routers.clarify_once.get_llm')
+    @patch('ai_backend.routers.clarify_once.get_llm')
     def test_stream_includes_done_signal(self, mock_get_llm):
         """Test that streaming includes [DONE] signal."""
         mock_chunk = AsyncMock()
@@ -52,7 +52,7 @@ class TestStreamingIntegration:
         content = response.text
         assert "data: [DONE]" in content
     
-    @patch('profu_backend.routers.clarify_once.get_llm')
+    @patch('ai_backend.routers.clarify_once.get_llm')
     def test_stream_handles_empty_chunks(self, mock_get_llm):
         """Test that streaming handles empty chunks gracefully."""
         mock_chunk_empty = AsyncMock()
@@ -75,7 +75,7 @@ class TestStreamingIntegration:
 class TestErrorHandling:
     """Test error handling in streaming."""
     
-    @patch('profu_backend.routers.clarify_once.get_llm')
+    @patch('ai_backend.routers.clarify_once.get_llm')
     def test_stream_handles_llm_errors(self, mock_get_llm):
         """Test that streaming handles LLM errors gracefully."""
         mock_llm = AsyncMock()

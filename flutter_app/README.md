@@ -12,7 +12,7 @@ A Flutter-based mobile application for Bacalaureat exam preparation with AI assi
 
 - Flutter SDK (3.0.0 or higher)
 - Dart SDK
-- Running backend server (see `../backend/README.md`)
+- Running backend server (see `../backend/ai_backend/README.md`)
 
 ## Installation
 
