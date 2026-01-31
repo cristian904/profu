@@ -1,0 +1,31 @@
+# Crawler
+
+Python module that downloads bacalaureat M1 PDFs (enunturi + rezolvari) from [variante-mate.ro](https://variante-mate.ro/bacalaureat/variante-m1/v-1).
+
+## URL pattern
+
+- Variant pages: `https://variante-mate.ro/bacalaureat/variante-m1/v-{1..100}`
+- Each page has 6 PDFs: 3 statements ("Enunturi" – Subiectul 1/2/3) and 3 solutions ("Rezolvari" – Subiectul 1/2/3).
+
+## Output
+
+- PDFs are saved under `downloads/` (gitignored).
+- Naming: `2009_M1_v{N}_s{1|2|3}_{statement|solution}.pdf` (e.g. `2009_M1_v1_s1_statement.pdf`, `2009_M1_v1_s2_solution.pdf`).
+
+## Setup
+
+From this directory:
+
+```bash
+poetry install
+```
+
+## Run
+
+From this directory:
+
+```bash
+poetry run python main.py
+```
+
+The script crawls variants 1–100, extracts the 6 links per page, resolves each to a PDF (direct or from HTML), and downloads them with a short delay between requests.

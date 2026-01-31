@@ -15,9 +15,9 @@
 
 ### Backend Setup
 
-1. Navigate to backend directory:
+1. Navigate to the backend package directory:
 ```bash
-cd backend
+cd backend/ai_backend
 ```
 
 2. Install dependencies:
@@ -35,7 +35,7 @@ Get your API key from: https://makersuite.google.com/app/apikey
 
 4. Run the backend server:
 ```bash
-poetry run uvicorn profu_backend.main:app --reload
+poetry run uvicorn ai_backend.main:app --reload
 ```
 
 The backend will be available at `http://localhost:8000`
@@ -91,9 +91,10 @@ flutter run -d chrome
 #### Backend Tests
 ```bash
 cd backend
-poetry install --with dev
-poetry run pytest
+cd ai_backend && poetry install --with dev && cd ..
+ai_backend/.venv/bin/python -m pytest
 ```
+(On Windows: `ai_backend\.venv\Scripts\python.exe -m pytest`)
 
 Tests include:
 - API endpoint validation

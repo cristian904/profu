@@ -4,8 +4,8 @@ Unit tests for the clarify routers (explica and guided_learning).
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from fastapi.testclient import TestClient
-from profu_backend.main import app
-from profu_backend.routers.common import QueryRequest, Message, get_llm
+from ai_backend.main import app
+from ai_backend.routers.common import QueryRequest, Message, get_llm
 
 client = TestClient(app)
 
@@ -40,7 +40,7 @@ class TestClarifyModels:
 class TestClarifyOnceEndpoint:
     """Test the /clarify/once-stream endpoint (Clarify Once mode)."""
     
-    @patch('profu_backend.routers.clarify_once.get_llm')
+    @patch('ai_backend.routers.clarify_once.get_llm')
     def test_clarify_once_stream_endpoint_exists(self, mock_get_llm):
         """Test that the /clarify/once-stream endpoint exists and accepts POST."""
         # Mock the LLM to avoid real API calls
@@ -62,7 +62,7 @@ class TestClarifyOnceEndpoint:
         response = client.post("/clarify/once-stream", json={})
         assert response.status_code == 422  # Validation error
     
-    @patch('profu_backend.routers.clarify_once.get_llm')
+    @patch('ai_backend.routers.clarify_once.get_llm')
     def test_clarify_once_stream_with_history(self, mock_get_llm):
         """Test streaming with conversation history."""
         mock_llm = AsyncMock()
@@ -86,7 +86,7 @@ class TestClarifyOnceEndpoint:
 class TestClarifyStepByStepEndpoint:
     """Test the /clarify/step-by-step-stream endpoint (Step-by-step mode)."""
     
-    @patch('profu_backend.routers.clarify_with_steps.get_llm')
+    @patch('ai_backend.routers.clarify_with_steps.get_llm')
     def test_step_by_step_stream_endpoint_exists(self, mock_get_llm):
         """Test that the /clarify/step-by-step-stream endpoint exists and accepts POST."""
         # Mock the LLM to avoid real API calls
@@ -109,7 +109,7 @@ class TestClarifyStepByStepEndpoint:
         response = client.post("/clarify/step-by-step-stream", json={})
         assert response.status_code == 422  # Validation error
     
-    @patch('profu_backend.routers.clarify_with_steps.get_llm')
+    @patch('ai_backend.routers.clarify_with_steps.get_llm')
     def test_step_by_step_stream_with_history(self, mock_get_llm):
         """Test streaming with conversation history (follow-up queries)."""
         mock_llm = AsyncMock()
@@ -154,7 +154,7 @@ class TestPromptsConfiguration:
     
     def test_prompts_loaded(self):
         """Test that prompts are loaded from YAML file."""
-        from profu_backend.routers.common import PROMPTS
+        from ai_backend.routers.common import PROMPTS
         
         assert PROMPTS is not None
         assert 'clarify_chat' in PROMPTS
@@ -163,7 +163,7 @@ class TestPromptsConfiguration:
     
     def test_clarify_system_prompt_content(self):
         """Test that clarify system prompt contains expected content."""
-        from profu_backend.routers.common import PROMPTS
+        from ai_backend.routers.common import PROMPTS
         
         prompt = PROMPTS['clarify_chat']['system_prompt']
         assert 'profesor' in prompt.lower()
@@ -173,7 +173,7 @@ class TestPromptsConfiguration:
     
     def test_guided_learning_prompts_exist(self):
         """Test that guided learning prompts are configured."""
-        from profu_backend.routers.common import PROMPTS
+        from ai_backend.routers.common import PROMPTS
         
         assert 'prerequisite_generator' in PROMPTS['guided_learning']
         assert 'question_asker' in PROMPTS['guided_learning']

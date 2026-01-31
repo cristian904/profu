@@ -102,8 +102,9 @@ Always run tests locally before pushing:
 ### Backend:
 ```bash
 cd backend
-poetry run pytest -v
+ai_backend/.venv/bin/python -m pytest -v
 ```
+(On Windows: `ai_backend\.venv\Scripts\python.exe -m pytest -v`)
 
 ### Frontend:
 ```bash

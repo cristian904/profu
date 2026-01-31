@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS exam_problems (
     topic VARCHAR(255),
     school_subject VARCHAR(100),
     difficulty VARCHAR(50),
+    source VARCHAR(20) CHECK (source IS NULL OR source IN ('var', 'exam', 'test')),
+    year INTEGER,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
