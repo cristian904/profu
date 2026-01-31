@@ -11,6 +11,7 @@ ENV/
 pip-log.txt
 pip-delete-this-directory.txt
 .cursor/
+./latex_preview/
 
 # Environment variables
 .env
