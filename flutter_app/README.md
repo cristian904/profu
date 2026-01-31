@@ -86,11 +86,20 @@ To change the backend URL, edit the `_apiUrl` variable in:
 - `lib/pages/solve_problem_page.dart`
 
 ### Supabase (local)
-The app uses Supabase for CRUD (users, conversations, exam problems, etc.). For local development:
+The app uses Supabase for auth and for CRUD (conversations, etc.). For local development:
 
 1. From the repo root, run `npm install` then `npx supabase start` (see `../supabase/README.md`).
-2. In `lib/main.dart`, set `_supabaseUrl` and `_supabaseAnonKey` to the API URL and anon key printed by `npx supabase start`.
-3. Use `Supabase.instance.client` in your code for table access (e.g. `supabase.from('exam_problems').select()`).
+2. Run the auth migration: in the Supabase SQL Editor, run `backend/sql/auth_and_rls_migration.sql` (after `init.sql`).
+3. In `lib/main.dart`, set `_supabaseUrl` and `_supabaseAnonKey` to the API URL and **anon** key printed by `npx supabase start`.
+4. Use `Supabase.instance.client` in your code for table access; the user's JWT is sent automatically and RLS enforces per-user data.
+
+### Google Sign-In (optional)
+To enable "Sign in with Google":
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create an OAuth 2.0 Client ID (Web application). For Android/iOS, add the respective client IDs.
+2. In the Supabase dashboard, Auth → Providers → Google: enable and paste the Web client ID and secret.
+3. **Web:** The app requires the Web client ID at runtime. Build with: `flutter run -d chrome --dart-define=GOOGLE_WEB_CLIENT_ID=YOUR_CLIENT_ID.apps.googleusercontent.com` (or set the default in `lib/auth_config.dart`). Without it, the Google sign-in button is hidden on web to avoid the "ClientID not set" assertion.
+4. For Android: add the Web client ID to the app (see [Supabase Google auth](https://supabase.com/docs/guides/auth/social-login/auth-google)). For iOS: add the URL scheme from Supabase Auth settings.
 
 ## Testing
 

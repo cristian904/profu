@@ -1,6 +1,7 @@
 import "package:flutter/material.dart";
 import "package:http/http.dart" as http;
 import "package:supabase_flutter/supabase_flutter.dart";
+import "pages/login_page.dart";
 import "widgets/profu_drawer.dart";
 
 /// Local Supabase URL and anon key. After running `npx supabase start` in the
@@ -18,12 +19,33 @@ Future<void> main() async {
   runApp(const ProfuApp());
 }
 
-class ProfuApp extends StatelessWidget {
+final _navigatorKey = GlobalKey<NavigatorState>();
+
+class ProfuApp extends StatefulWidget {
   const ProfuApp({super.key});
+
+  @override
+  State<ProfuApp> createState() => _ProfuAppState();
+}
+
+class _ProfuAppState extends State<ProfuApp> {
+  @override
+  void initState() {
+    super.initState();
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.signedOut) {
+        _navigatorKey.currentState?.pushNamedAndRemoveUntil(
+          '/login',
+          (route) => false,
+        );
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: _navigatorKey,
       title: 'Profu',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -48,7 +70,13 @@ class ProfuApp extends StatelessWidget {
         ),
       ),
       themeMode: ThemeMode.dark, // Force dark mode
-      home: const LandingPage(),
+      initialRoute: '/',
+      routes: <String, WidgetBuilder>{
+        '/': (context) => Supabase.instance.client.auth.currentSession != null
+            ? const LandingPage()
+            : const LoginPage(),
+        '/login': (context) => const LoginPage(),
+      },
     );
   }
 }
