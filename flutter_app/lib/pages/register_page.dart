@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Register with email and password. Optional username stored in profiles.
+/// Register with email and password. Nume, prenume, clasa stored in public.users.
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 
@@ -13,7 +13,10 @@ class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _numeController = TextEditingController();
+  final _prenumeController = TextEditingController();
   final _usernameController = TextEditingController();
+  int _clasa = 9;
   bool _isLoading = false;
   String? _error;
   bool _signUpSuccess = false;
@@ -22,6 +25,8 @@ class _RegisterPageState extends State<RegisterPage> {
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _numeController.dispose();
+    _prenumeController.dispose();
     _usernameController.dispose();
     super.dispose();
   }
@@ -38,11 +43,20 @@ class _RegisterPageState extends State<RegisterPage> {
         password: _passwordController.text,
       );
       final user = Supabase.instance.client.auth.currentUser;
-      if (user != null && _usernameController.text.trim().isNotEmpty) {
-        await Supabase.instance.client.from('profiles').upsert({
-          'id': user.id,
-          'username': _usernameController.text.trim(),
+      if (user != null) {
+        await Supabase.instance.client.from('users').insert({
+          'auth_id': user.id,
+          'email': user.email ?? _emailController.text.trim(),
+          'first_name': _prenumeController.text.trim(),
+          'last_name': _numeController.text.trim(),
+          'study_year': _clasa,
         });
+        if (_usernameController.text.trim().isNotEmpty) {
+          await Supabase.instance.client.from('profiles').upsert({
+            'id': user.id,
+            'username': _usernameController.text.trim(),
+          });
+        }
       }
       if (!mounted) return;
       setState(() {
@@ -163,11 +177,61 @@ class _RegisterPageState extends State<RegisterPage> {
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
+                    controller: _numeController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Nume',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.badge_outlined),
+                    ),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) {
+                        return 'Introdu numele';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _prenumeController,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Prenume',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person_outline),
+                    ),
+                    validator: (v) {
+                      if (v == null || v.trim().isEmpty) {
+                        return 'Introdu prenumele';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<int>(
+                    value: _clasa,
+                    decoration: const InputDecoration(
+                      labelText: 'Clasa',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.school_outlined),
+                    ),
+                    items: [9, 10, 11, 12]
+                        .map((c) => DropdownMenuItem<int>(
+                              value: c,
+                              child: Text('Clasa $c'),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _clasa = v);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
                     controller: _usernameController,
                     decoration: const InputDecoration(
                       labelText: 'Username (opțional)',
                       border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.person_outline),
+                      prefixIcon: Icon(Icons.alternate_email),
                     ),
                   ),
                   if (_error != null) ...[

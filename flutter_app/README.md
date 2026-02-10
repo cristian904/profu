@@ -94,12 +94,15 @@ The app uses Supabase for auth and for CRUD (conversations, etc.). For local dev
 4. Use `Supabase.instance.client` in your code for table access; the user's JWT is sent automatically and RLS enforces per-user data.
 
 ### Google Sign-In (optional)
-To enable "Sign in with Google":
+To enable "Sign in with Google" you **must enable the Google provider** in Supabase; otherwise you get: `Unsupported provider: provider is not enabled`.
 
 1. In [Google Cloud Console](https://console.cloud.google.com/), create an OAuth 2.0 Client ID (Web application). For Android/iOS, add the respective client IDs.
-2. In the Supabase dashboard, Auth → Providers → Google: enable and paste the Web client ID and secret.
-3. **Web:** The app requires the Web client ID at runtime. Build with: `flutter run -d chrome --dart-define=GOOGLE_WEB_CLIENT_ID=YOUR_CLIENT_ID.apps.googleusercontent.com` (or set the default in `lib/auth_config.dart`). Without it, the Google sign-in button is hidden on web to avoid the "ClientID not set" assertion.
-4. For Android: add the Web client ID to the app (see [Supabase Google auth](https://supabase.com/docs/guides/auth/social-login/auth-google)). For iOS: add the URL scheme from Supabase Auth settings.
+2. **Enable Google in Supabase:**
+   - **Hosted (supabase.com):** Dashboard → **Authentication** → **Providers** → **Google** → turn **Enable** ON, paste **Client ID** and **Client secret**, Save.
+   - **Local (`npx supabase start`):** You must edit **supabase/config.toml** (the hosted dashboard does not apply). See **[docs/SUPABASE_GOOGLE_LOCAL.md](../docs/SUPABASE_GOOGLE_LOCAL.md)** for step-by-step: add `[auth.external.google]` with `enabled = true`, `client_id`, `secret`, then run `npx supabase stop` and `npx supabase start`.
+3. **Web:** Add your app URL to **Redirect URLs** (Supabase dashboard → Auth → URL Configuration). For local dev with `--web-port 7357`, add `http://localhost:7357/` (and set **Site URL** if needed). The app uses Supabase OAuth redirect for Google on web (no popup).
+4. For **mobile** native Google sign-in, set the Web client ID (e.g. `--dart-define=GOOGLE_WEB_CLIENT_ID=...` or `lib/auth_config.dart`). Web uses Supabase OAuth redirect and does not need it for the button.
+5. For Android: add the Web client ID to the app (see [Supabase Google auth](https://supabase.com/docs/guides/auth/social-login/auth-google)). For iOS: add the URL scheme from Supabase Auth settings.
 
 ## Testing
 

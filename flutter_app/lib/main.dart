@@ -1,8 +1,14 @@
+import "package:flutter/foundation.dart";
 import "package:flutter/material.dart";
 import "package:http/http.dart" as http;
 import "package:supabase_flutter/supabase_flutter.dart";
+import "app_nav.dart";
 import "pages/login_page.dart";
 import "widgets/profu_drawer.dart";
+
+void _authLog(String msg) {
+  if (kDebugMode) debugPrint('[AUTH_DEBUG] $msg');
+}
 
 /// Local Supabase URL and anon key. After running `npx supabase start` in the
 /// repo root, copy the API URL and anon key from the CLI output (or from
@@ -16,10 +22,13 @@ Future<void> main() async {
     url: _supabaseUrl,
     anonKey: _supabaseAnonKey,
   );
+  if (kDebugMode) {
+    final session = Supabase.instance.client.auth.currentSession;
+    debugPrint('[AUTH_DEBUG] main() after init: currentSession=${session != null}');
+  }
   runApp(const ProfuApp());
 }
 
-final _navigatorKey = GlobalKey<NavigatorState>();
 
 class ProfuApp extends StatefulWidget {
   const ProfuApp({super.key});
@@ -33,11 +42,22 @@ class _ProfuAppState extends State<ProfuApp> {
   void initState() {
     super.initState();
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      if (data.event == AuthChangeEvent.signedOut) {
-        _navigatorKey.currentState?.pushNamedAndRemoveUntil(
-          '/login',
-          (route) => false,
-        );
+      _authLog('onAuthStateChange: ${data.event} (session=${data.session != null})');
+      void navigate() {
+        final target = data.event == AuthChangeEvent.signedIn ? '/' : '/login';
+        final state = appNavigatorKey.currentState;
+        _authLog('navigate() target=$target currentState=${state != null}');
+        if (state == null) {
+          _authLog('navigate() SKIP: navigator currentState is null');
+          return;
+        }
+        state.pushNamedAndRemoveUntil(target, (route) => false);
+        _authLog('navigate() pushNamedAndRemoveUntil done');
+      }
+      if (data.event == AuthChangeEvent.signedIn) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => navigate());
+      } else if (data.event == AuthChangeEvent.signedOut) {
+        navigate();
       }
     });
   }
@@ -45,7 +65,7 @@ class _ProfuAppState extends State<ProfuApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      navigatorKey: _navigatorKey,
+      navigatorKey: appNavigatorKey,
       title: 'Profu',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -72,9 +92,11 @@ class _ProfuAppState extends State<ProfuApp> {
       themeMode: ThemeMode.dark, // Force dark mode
       initialRoute: '/',
       routes: <String, WidgetBuilder>{
-        '/': (context) => Supabase.instance.client.auth.currentSession != null
-            ? const LandingPage()
-            : const LoginPage(),
+        '/': (context) {
+          final hasSession = Supabase.instance.client.auth.currentSession != null;
+          _authLog("route '/' build: hasSession=$hasSession");
+          return hasSession ? const LandingPage() : const LoginPage();
+        },
         '/login': (context) => const LoginPage(),
       },
     );
@@ -91,6 +113,7 @@ class LandingPage extends StatefulWidget {
 class _LandingPageState extends State<LandingPage> {
   bool _isLoading = false;
   String? _error;
+  String? _displayName;
 
   // Update this URL to match your FastAPI backend
   final String _apiUrl = 'http://localhost:8000/index';
@@ -99,6 +122,30 @@ class _LandingPageState extends State<LandingPage> {
   void initState() {
     super.initState();
     _fetchAppDescription();
+    _fetchUserDisplayName();
+  }
+
+  Future<void> _fetchUserDisplayName() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+    try {
+      final res = await Supabase.instance.client
+          .from('users')
+          .select('first_name, last_name')
+          .eq('auth_id', user.id)
+          .maybeSingle();
+      if (!mounted) return;
+      if (res != null) {
+        final first = (res['first_name'] as String?)?.trim() ?? '';
+        final last = (res['last_name'] as String?)?.trim() ?? '';
+        final name = [first, last].where((s) => s.isNotEmpty).join(' ');
+        setState(() {
+          _displayName = name.isNotEmpty ? name : null;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _displayName = null);
+    }
   }
 
   Future<void> _fetchAppDescription() async {
@@ -130,11 +177,28 @@ class _LandingPageState extends State<LandingPage> {
 
   @override
   Widget build(BuildContext context) {
+    final user = Supabase.instance.client.auth.currentUser;
+    final String greetingName = _displayName?.isNotEmpty == true
+        ? _displayName!
+        : (user?.email ?? 'Cont');
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('Profu'),
         centerTitle: true,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(
+              child: Text(
+                'Salut, $greetingName',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+            ),
+          ),
+        ],
       ),
       drawer: const ProfuDrawer(),
       body: Center(

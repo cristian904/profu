@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as dbg_http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/conversation_models.dart';
@@ -51,14 +54,74 @@ class ConversationRepository {
       throw Exception('Must be logged in to create a conversation');
     }
 
-    final response = await _client.from('conversations').insert({
-      'user_id': userId,
-      'type': type.dbValue,
-      'title': title,
-      'school_subject': schoolSubject,
-    }).select().single();
+    // #region agent log
+    try {
+      await dbg_http
+          .post(
+            Uri.parse(
+                'http://127.0.0.1:7242/ingest/3b1cec4a-02ef-4628-8cc6-fd6744479f32'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'id': 'log_${DateTime.now().millisecondsSinceEpoch}',
+              'timestamp': DateTime.now().millisecondsSinceEpoch,
+              'location':
+                  'conversation_repository.dart:createConversation:beforeInsert',
+              'message': 'Create conversation attempt',
+              'runId': 'pre-fix',
+              'hypothesisId': 'H1_H2_H5',
+              'data': {
+                'hasUser': true,
+                'userId': userId,
+                'type': type.dbValue,
+                'hasTitle': title?.isNotEmpty == true,
+                'hasSchoolSubject': schoolSubject?.isNotEmpty == true,
+              },
+            }),
+          )
+          .catchError((_) {});
+    } catch (_) {
+      // ignore logging failures
+    }
+    // #endregion agent log
 
-    return Conversation.fromJson(response as Map<String, dynamic>);
+    try {
+      final response = await _client.from('conversations').insert({
+        'user_id': userId,
+        'type': type.dbValue,
+        'title': title,
+        'school_subject': schoolSubject,
+      }).select().single();
+
+      return Conversation.fromJson(response as Map<String, dynamic>);
+    } catch (e) {
+      // #region agent log
+      try {
+        await dbg_http
+            .post(
+              Uri.parse(
+                  'http://127.0.0.1:7242/ingest/3b1cec4a-02ef-4628-8cc6-fd6744479f32'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'id': 'log_${DateTime.now().millisecondsSinceEpoch}',
+                'timestamp': DateTime.now().millisecondsSinceEpoch,
+                'location':
+                    'conversation_repository.dart:createConversation:error',
+                'message': 'Create conversation error',
+                'runId': 'pre-fix',
+                'hypothesisId': 'H1_H2_H5',
+                'data': {
+                  'userId': userId,
+                  'error': e.toString(),
+                },
+              }),
+            )
+            .catchError((_) {});
+      } catch (_) {
+        // ignore logging failures
+      }
+      // #endregion agent log
+      rethrow;
+    }
   }
 
   Future<Conversation> updateConversationTitle({

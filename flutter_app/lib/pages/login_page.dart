@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../app_nav.dart';
 import '../auth_config.dart';
+import 'google_login_stub.dart' if (dart.library.html) 'google_login_web.dart' as google_login;
 import 'register_page.dart';
 
 /// Login via email/password or Google. Navigates to home on success.
@@ -20,6 +22,105 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _error;
+  late final GoogleSignIn _googleSignIn;
+
+  @override
+  void initState() {
+    super.initState();
+    _googleSignIn = GoogleSignIn(
+      clientId: kIsWeb ? googleWebClientId : null,
+      scopes: ['openid', 'email'],
+    );
+    if (!kIsWeb) {
+      google_login.setupGoogleSignInListener(_googleSignIn, _onGoogleIdToken);
+    }
+  }
+
+  /// Web only: redirect to Google via Supabase OAuth (no popup/GIS).
+  Future<void> _signInWithGoogleWeb() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      await Supabase.instance.client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: Uri.base.origin + Uri.base.path,
+      );
+    } on AuthException catch (e) {
+      if (mounted) {
+        final msg = e.message;
+        final isProviderDisabled = msg.contains('provider is not enabled') ||
+            msg.contains('Unsupported provider');
+        setState(() {
+          _error = isProviderDisabled
+              ? 'Google is not enabled in Supabase. Local (127.0.0.1:54321): edit supabase/config.toml — '
+                'add [auth.external.google] with enabled=true, client_id, secret; then npx supabase stop && start. '
+                'See docs/SUPABASE_GOOGLE_LOCAL.md.'
+              : msg;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        final s = e.toString();
+        final isProviderDisabled = s.contains('provider is not enabled') ||
+            s.contains('Unsupported provider');
+        setState(() {
+          _error = isProviderDisabled
+              ? 'Google is not enabled in Supabase. Local (127.0.0.1:54321): edit supabase/config.toml — '
+                'add [auth.external.google] with enabled=true, client_id, secret; then npx supabase stop && start. '
+                'See docs/SUPABASE_GOOGLE_LOCAL.md.'
+              : s;
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _onGoogleIdToken(String idToken) async {
+    if (kDebugMode) debugPrint('[AUTH_DEBUG] _onGoogleIdToken called, mounted=$mounted');
+    if (!mounted) {
+      if (kDebugMode) debugPrint('[AUTH_DEBUG] _onGoogleIdToken SKIP: !mounted');
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      if (kDebugMode) debugPrint('[AUTH_DEBUG] _onGoogleIdToken calling signInWithIdToken');
+      await Supabase.instance.client.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: idToken,
+      );
+      if (kDebugMode) debugPrint('[AUTH_DEBUG] _onGoogleIdToken signInWithIdToken done, mounted=$mounted');
+      if (!mounted) {
+        if (kDebugMode) debugPrint('[AUTH_DEBUG] _onGoogleIdToken SKIP nav: !mounted after signIn');
+        return;
+      }
+      final navState = appNavigatorKey.currentState;
+      if (kDebugMode) debugPrint('[AUTH_DEBUG] _onGoogleIdToken navState=${navState != null}');
+      if (navState != null) {
+        navState.pushNamedAndRemoveUntil('/', (route) => false);
+        if (kDebugMode) debugPrint('[AUTH_DEBUG] _onGoogleIdToken pushNamedAndRemoveUntil done');
+      } else {
+        if (kDebugMode) debugPrint('[AUTH_DEBUG] _onGoogleIdToken SKIP nav: navState is null');
+      }
+    } on AuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _isLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -54,19 +155,14 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  /// Used on mobile only; web uses GIS renderButton + authenticationEvents.
   Future<void> _signInWithGoogle() async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
     try {
-      // Web requires a non-null clientId; mobile uses platform config (null).
-      // Request only openid + email so we get an ID token for Supabase without calling People API.
-      final googleSignIn = GoogleSignIn(
-        clientId: kIsWeb ? googleWebClientId : null,
-        scopes: ['openid', 'email'],
-      );
-      final response = await googleSignIn.signIn();
+      final response = await _googleSignIn.signIn();
       if (response == null) {
         setState(() => _isLoading = false);
         return;
@@ -80,12 +176,7 @@ class _LoginPageState extends State<LoginPage> {
         });
         return;
       }
-      await Supabase.instance.client.auth.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-      );
-      if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed('/');
+      await _onGoogleIdToken(idToken);
     } on AuthException catch (e) {
       setState(() {
         _error = e.message;
@@ -188,10 +279,10 @@ class _LoginPageState extends State<LoginPage> {
                         : const Text('Autentificare'),
                   ),
                   const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    onPressed: _isLoading ? null : _signInWithGoogle,
-                    icon: const Icon(Icons.g_mobiledata, size: 24),
-                    label: const Text('Continuă cu Google'),
+                  google_login.buildGoogleButton(
+                    kIsWeb
+                        ? (_isLoading ? null : _signInWithGoogleWeb)
+                        : (_isLoading ? null : _signInWithGoogle),
                   ),
                   const SizedBox(height: 24),
                   TextButton(
