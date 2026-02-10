@@ -31,8 +31,27 @@ CREATE TRIGGER on_auth_user_created
 
 -- 3. Conversations: switch user_id from integer (public.users) to UUID (auth.users)
 -- Truncate so we can change column type (no backfill mapping).
-TRUNCATE TABLE conversation_messages;
-TRUNCATE TABLE conversations;
+TRUNCATE TABLE conversation_messages, conversations;
+
+-- Drop all RLS policies that reference conversations.user_id (so we can drop the column).
+-- Include both this script's names and Supabase/alternate policy names.
+DROP POLICY IF EXISTS "Users can view own conversations" ON conversations;
+DROP POLICY IF EXISTS "Users can insert own conversations" ON conversations;
+DROP POLICY IF EXISTS "Users can update own conversations" ON conversations;
+DROP POLICY IF EXISTS "Users can delete own conversations" ON conversations;
+DROP POLICY IF EXISTS conversations_select_own ON conversations;
+DROP POLICY IF EXISTS conversations_insert_own ON conversations;
+DROP POLICY IF EXISTS conversations_update_own ON conversations;
+DROP POLICY IF EXISTS conversations_delete_own ON conversations;
+
+DROP POLICY IF EXISTS "Users can view messages of own conversations" ON conversation_messages;
+DROP POLICY IF EXISTS "Users can insert messages in own conversations" ON conversation_messages;
+DROP POLICY IF EXISTS "Users can update messages in own conversations" ON conversation_messages;
+DROP POLICY IF EXISTS "Users can delete messages in own conversations" ON conversation_messages;
+DROP POLICY IF EXISTS conversation_messages_select_own ON conversation_messages;
+DROP POLICY IF EXISTS conversation_messages_insert_own ON conversation_messages;
+DROP POLICY IF EXISTS conversation_messages_update_own ON conversation_messages;
+DROP POLICY IF EXISTS conversation_messages_delete_own ON conversation_messages;
 
 ALTER TABLE conversations
     DROP CONSTRAINT IF EXISTS conversations_user_id_fkey;
