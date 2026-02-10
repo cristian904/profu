@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../pages/clarify_chat_page.dart';
 import '../pages/solve_problem_page.dart';
@@ -32,6 +33,9 @@ class ProfuDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = Supabase.instance.client.auth.currentUser;
+    final displayLabel = user?.email ?? 'Cont';
+
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
@@ -40,22 +44,32 @@ class ProfuDrawer extends StatelessWidget {
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.primary,
             ),
-            child: const Column(
+            child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
+                const Icon(
                   Icons.school,
                   size: 60,
                   color: Colors.white,
                 ),
-                SizedBox(height: 16),
-                Text(
+                const SizedBox(height: 16),
+                const Text(
                   'Meniu',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
                   ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  displayLabel,
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 14,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
                 ),
               ],
             ),
@@ -74,6 +88,20 @@ class ProfuDrawer extends StatelessWidget {
             leading: const Icon(Icons.quiz, color: Colors.purple),
             title: const Text('Simulare'),
             onTap: () => _handleMenuOption(context, 'simulation'),
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.grey),
+            title: const Text('Deconectare'),
+            onTap: () async {
+              Navigator.pop(context);
+              await Supabase.instance.client.auth.signOut();
+              if (!context.mounted) return;
+              Navigator.of(context).pushNamedAndRemoveUntil(
+                '/login',
+                (route) => false,
+              );
+            },
           ),
         ],
       ),

@@ -42,7 +42,7 @@ class ConversationSpeaker {
 
 class Conversation {
   final int id;
-  final int userId;
+  final String userId;
   final String? title;
   final String? schoolSubject;
   final ConversationType type;
@@ -60,7 +60,7 @@ class Conversation {
   factory Conversation.fromJson(Map<String, dynamic> json) {
     return Conversation(
       id: json['id'] as int,
-      userId: json['user_id'] as int,
+      userId: json['user_id'] as String,
       title: json['title'] as String?,
       schoolSubject: json['school_subject'] as String?,
       type: ConversationTypeDb.fromDb(json['type'] as String),
