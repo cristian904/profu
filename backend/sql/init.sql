@@ -28,6 +28,8 @@ CREATE TABLE IF NOT EXISTS exam_problems (
     difficulty VARCHAR(50),
     source VARCHAR(20) CHECK (source IS NULL OR source IN ('var', 'exam', 'test')),
     year INTEGER,
+    statement TEXT,
+    solution JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -112,5 +114,12 @@ CREATE TRIGGER users_updated_at
     BEFORE UPDATE ON users
     FOR EACH ROW
     EXECUTE PROCEDURE set_updated_at();
+
+create table if not exists documents (
+  id uuid primary key default gen_random_uuid(),
+  content text,
+  metadata jsonb,
+  embedding vector(1536) -- Match this to your model's dimensions
+);
 
 COMMIT;

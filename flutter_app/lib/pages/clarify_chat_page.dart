@@ -38,7 +38,6 @@ class _ClarifyChatPageState extends State<ClarifyChatPage> with SingleTickerProv
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('N-am înțeles la clasă'),
         centerTitle: true,
         bottom: TabBar(
@@ -338,7 +337,7 @@ class _ExplicaTabState extends State<ExplicaTab> {
                             Icon(
                               Icons.help_outline,
                               size: 80,
-                              color: Colors.orange.withOpacity(0.5),
+                              color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                             ),
                             const SizedBox(height: 16),
                             Text(
@@ -347,7 +346,7 @@ class _ExplicaTabState extends State<ExplicaTab> {
                                   .textTheme
                                   .bodyLarge
                                   ?.copyWith(
-                                    color: Colors.grey[600],
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                   ),
                               textAlign: TextAlign.center,
                             ),
@@ -369,7 +368,7 @@ class _ExplicaTabState extends State<ExplicaTab> {
                   color: Theme.of(context).colorScheme.surface,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Theme.of(context).colorScheme.shadow.withOpacity(0.2),
                       blurRadius: 4,
                       offset: const Offset(0, -2),
                     ),
@@ -403,12 +402,12 @@ class _ExplicaTabState extends State<ExplicaTab> {
                         onPressed:
                             _isStreaming || _isLoadingHistory ? null : _sendMessage,
                         child: _isStreaming
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 24,
                                 height: 24,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color: Theme.of(context).colorScheme.onPrimary,
                                 ),
                               )
                             : const Icon(Icons.send),
@@ -425,8 +424,8 @@ class _ExplicaTabState extends State<ExplicaTab> {
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+    final scheme = Theme.of(context).colorScheme;
+
     return Align(
       alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Column(
@@ -440,7 +439,7 @@ class _ExplicaTabState extends State<ExplicaTab> {
                 'Time to first token: ${message.timeToFirstToken!.toStringAsFixed(2)}s',
                 style: TextStyle(
                   fontSize: 11,
-                  color: isDark ? Colors.grey[500] : Colors.grey[600],
+                  color: scheme.onSurfaceVariant,
                   fontStyle: FontStyle.italic,
                 ),
               ),
@@ -452,8 +451,8 @@ class _ExplicaTabState extends State<ExplicaTab> {
             ),
             decoration: BoxDecoration(
               color: message.isUser
-                  ? Theme.of(context).colorScheme.primary
-                  : (isDark ? const Color(0xFF2C2C2C) : Colors.grey[200]),
+                  ? scheme.primary
+                  : scheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
@@ -466,9 +465,9 @@ class _ExplicaTabState extends State<ExplicaTab> {
                 child: Text(
                   message.text,
                   style: TextStyle(
-                    color: message.isUser 
-                        ? Colors.white 
-                        : (isDark ? Colors.white : Colors.black87),
+                    color: message.isUser
+                        ? scheme.onPrimary
+                        : scheme.onSurface,
                     fontSize: 16,
                   ),
                 ),
@@ -489,39 +488,39 @@ class _ExplicaTabState extends State<ExplicaTab> {
                   inlineSyntaxes: [LatexInlineSyntax()],
                   styleSheet: MarkdownStyleSheet(
                     p: TextStyle(
-                      color: isDark ? Colors.white : Colors.black87,
+                      color: scheme.onSurface,
                       fontSize: 16,
                       height: 1.5,
                     ),
                     strong: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black,
+                      color: scheme.onSurface,
                     ),
                     em: const TextStyle(
                       fontStyle: FontStyle.italic,
                     ),
                     code: TextStyle(
-                      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.grey[300],
-                      color: isDark ? Colors.white : Colors.black87,
+                      backgroundColor: scheme.surface,
+                      color: scheme.onSurface,
                       fontFamily: 'monospace',
                       fontSize: 14,
                     ),
                     codeblockPadding: const EdgeInsets.all(8),
                     codeblockDecoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E1E) : Colors.grey[300],
+                      color: scheme.surface,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     blockquote: TextStyle(
-                      color: isDark ? Colors.grey[400] : Colors.grey[700],
+                      color: scheme.onSurfaceVariant,
                       fontStyle: FontStyle.italic,
                     ),
                     blockquotePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     blockquoteDecoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E1E) : Colors.grey[100],
+                      color: scheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(4),
                       border: Border(
                         left: BorderSide(
-                          color: isDark ? Colors.grey[600]! : Colors.grey[400]!,
+                          color: scheme.outline,
                           width: 4,
                         ),
                       ),
@@ -529,23 +528,23 @@ class _ExplicaTabState extends State<ExplicaTab> {
                     h1: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black87,
+                      color: scheme.onSurface,
                       height: 1.5,
                     ),
                     h2: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black87,
+                      color: scheme.onSurface,
                       height: 1.4,
                     ),
                     h3: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black87,
+                      color: scheme.onSurface,
                       height: 1.3,
                     ),
                     listBullet: TextStyle(
-                      color: isDark ? Colors.white : Colors.black87,
+                      color: scheme.onSurface,
                       fontSize: 16,
                     ),
                     listIndent: 24,
@@ -563,9 +562,9 @@ class _ExplicaTabState extends State<ExplicaTab> {
                   height: 16,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: message.isUser 
-                        ? Colors.white 
-                        : (isDark ? Colors.grey[400] : Colors.grey[700]),
+                    color: message.isUser
+                        ? scheme.onPrimary
+                        : scheme.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -855,7 +854,7 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
                             Icon(
                               Icons.school_outlined,
                               size: 80,
-                              color: Colors.orange.withOpacity(0.5),
+                              color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                             ),
                             const SizedBox(height: 16),
                             Padding(
@@ -867,7 +866,7 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
                                     .textTheme
                                     .bodyLarge
                                     ?.copyWith(
-                                      color: Colors.grey[600],
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     ),
                                 textAlign: TextAlign.center,
                               ),
@@ -890,7 +889,7 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
                   color: Theme.of(context).colorScheme.surface,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Theme.of(context).colorScheme.shadow.withOpacity(0.2),
                       blurRadius: 4,
                       offset: const Offset(0, -2),
                     ),
@@ -924,12 +923,12 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
                         onPressed:
                             _isStreaming || _isLoadingHistory ? null : _sendMessage,
                         child: _isStreaming
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 24,
                                 height: 24,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color: Theme.of(context).colorScheme.onPrimary,
                                 ),
                               )
                             : const Icon(Icons.send),
@@ -946,8 +945,8 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+    final scheme = Theme.of(context).colorScheme;
+
     return Align(
       alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Column(
@@ -961,7 +960,7 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
                 'Time to first token: ${message.timeToFirstToken!.toStringAsFixed(2)}s',
                 style: TextStyle(
                   fontSize: 11,
-                  color: isDark ? Colors.grey[500] : Colors.grey[600],
+                  color: scheme.onSurfaceVariant,
                   fontStyle: FontStyle.italic,
                 ),
               ),
@@ -973,8 +972,8 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
             ),
             decoration: BoxDecoration(
               color: message.isUser
-                  ? Theme.of(context).colorScheme.primary
-                  : (isDark ? const Color(0xFF2C2C2C) : Colors.grey[200]),
+                  ? scheme.primary
+                  : scheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
@@ -987,9 +986,9 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
                 child: Text(
                   message.text,
                   style: TextStyle(
-                    color: message.isUser 
-                        ? Colors.white 
-                        : (isDark ? Colors.white : Colors.black87),
+                    color: message.isUser
+                        ? scheme.onPrimary
+                        : scheme.onSurface,
                     fontSize: 16,
                   ),
                 ),
@@ -1010,39 +1009,39 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
                   inlineSyntaxes: [LatexInlineSyntax()],
                   styleSheet: MarkdownStyleSheet(
                     p: TextStyle(
-                      color: isDark ? Colors.white : Colors.black87,
+                      color: scheme.onSurface,
                       fontSize: 16,
                       height: 1.5,
                     ),
                     strong: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black,
+                      color: scheme.onSurface,
                     ),
                     em: const TextStyle(
                       fontStyle: FontStyle.italic,
                     ),
                     code: TextStyle(
-                      backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.grey[300],
-                      color: isDark ? Colors.white : Colors.black87,
+                      backgroundColor: scheme.surface,
+                      color: scheme.onSurface,
                       fontFamily: 'monospace',
                       fontSize: 14,
                     ),
                     codeblockPadding: const EdgeInsets.all(8),
                     codeblockDecoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E1E) : Colors.grey[300],
+                      color: scheme.surface,
                       borderRadius: BorderRadius.circular(8),
                     ),
                     blockquote: TextStyle(
-                      color: isDark ? Colors.grey[400] : Colors.grey[700],
+                      color: scheme.onSurfaceVariant,
                       fontStyle: FontStyle.italic,
                     ),
                     blockquotePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     blockquoteDecoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E1E1E) : Colors.grey[100],
+                      color: scheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(4),
                       border: Border(
                         left: BorderSide(
-                          color: isDark ? Colors.grey[600]! : Colors.grey[400]!,
+                          color: scheme.outline,
                           width: 4,
                         ),
                       ),
@@ -1050,23 +1049,23 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
                     h1: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black87,
+                      color: scheme.onSurface,
                       height: 1.5,
                     ),
                     h2: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black87,
+                      color: scheme.onSurface,
                       height: 1.4,
                     ),
                     h3: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                      color: isDark ? Colors.white : Colors.black87,
+                      color: scheme.onSurface,
                       height: 1.3,
                     ),
                     listBullet: TextStyle(
-                      color: isDark ? Colors.white : Colors.black87,
+                      color: scheme.onSurface,
                       fontSize: 16,
                     ),
                     listIndent: 24,
@@ -1084,9 +1083,9 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
                   height: 16,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: message.isUser 
-                        ? Colors.white 
-                        : (isDark ? Colors.grey[400] : Colors.grey[700]),
+                    color: message.isUser
+                        ? scheme.onPrimary
+                        : scheme.onSurfaceVariant,
                   ),
                 ),
               ),
@@ -1141,20 +1140,20 @@ class LatexElementBuilder extends MarkdownElementBuilder {
 
     return Builder(
       builder: (context) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
-        
+        final scheme = Theme.of(context).colorScheme;
+
         try {
           return Padding(
-            padding: isBlock 
-              ? const EdgeInsets.symmetric(vertical: 8)
-              : EdgeInsets.zero,
+            padding: isBlock
+                ? const EdgeInsets.symmetric(vertical: 8)
+                : EdgeInsets.zero,
             child: Math.tex(
               latex,
               mathStyle: isBlock ? MathStyle.display : MathStyle.text,
               textStyle: preferredStyle?.copyWith(fontSize: isBlock ? 18 : 16),
               options: MathOptions(
                 fontSize: isBlock ? 18 : 16,
-                color: isDark ? Colors.white : Colors.black87,
+                color: scheme.onSurface,
               ),
             ),
           );
@@ -1163,7 +1162,7 @@ class LatexElementBuilder extends MarkdownElementBuilder {
           return Text(
             isBlock ? '\$\$$latex\$\$' : '\$$latex\$',
             style: TextStyle(
-              color: Colors.red[700],
+              color: scheme.error,
               fontFamily: 'monospace',
               fontSize: 14,
             ),
@@ -1189,12 +1188,12 @@ class CustomCodeElementBuilder extends MarkdownElementBuilder {
     // Default code block rendering with theme support
     return Builder(
       builder: (context) {
-        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final scheme = Theme.of(context).colorScheme;
         return Container(
           padding: const EdgeInsets.all(12),
           margin: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E1E1E) : Colors.grey[300],
+            color: scheme.surface,
             borderRadius: BorderRadius.circular(8),
           ),
           child: SelectableText(
@@ -1202,7 +1201,7 @@ class CustomCodeElementBuilder extends MarkdownElementBuilder {
             style: TextStyle(
               fontFamily: 'monospace',
               fontSize: 14,
-              color: isDark ? Colors.white : Colors.black87,
+              color: scheme.onSurface,
             ),
           ),
         );
@@ -1250,17 +1249,22 @@ class CustomCodeElementBuilder extends MarkdownElementBuilder {
     functions.removeWhere((f) => f.isEmpty);
 
     if (functions.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.red[100],
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: const Text(
-          'Invalid graph: missing function parameter',
-          style: TextStyle(color: Colors.red),
-        ),
+      return Builder(
+        builder: (context) {
+          final scheme = Theme.of(context).colorScheme;
+          return Container(
+            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: scheme.errorContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'Invalid graph: missing function parameter',
+              style: TextStyle(color: scheme.error),
+            ),
+          );
+        },
       );
     }
 
@@ -1346,8 +1350,8 @@ class FunctionGraphWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    
+    final scheme = Theme.of(context).colorScheme;
+
     // Define colors for multiple functions
     final lineColors = [
       Colors.blue,
@@ -1383,13 +1387,13 @@ class FunctionGraphWidget extends StatelessWidget {
         height: 250,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.red[100],
+          color: scheme.errorContainer,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Center(
           child: Text(
             'Could not render graph for: ${functions.join(", ")}',
-            style: const TextStyle(color: Colors.red),
+            style: TextStyle(color: scheme.error),
           ),
         ),
       );
@@ -1399,10 +1403,10 @@ class FunctionGraphWidget extends StatelessWidget {
       height: 250,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF1E1E1E) : Colors.grey[100],
+        color: scheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isDark ? Colors.grey[700]! : Colors.grey[300]!,
+          color: scheme.outlineVariant,
         ),
       ),
       child: Column(
@@ -1415,7 +1419,7 @@ class FunctionGraphWidget extends StatelessWidget {
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 14,
-                  color: isDark ? Colors.white : Colors.black87,
+                  color: scheme.onSurface,
                 ),
               ),
             ),
@@ -1429,13 +1433,13 @@ class FunctionGraphWidget extends StatelessWidget {
                   verticalInterval: (xMax - xMin) / 5,
                   getDrawingHorizontalLine: (value) {
                     return FlLine(
-                      color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+                      color: scheme.outlineVariant,
                       strokeWidth: 1,
                     );
                   },
                   getDrawingVerticalLine: (value) {
                     return FlLine(
-                      color: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+                      color: scheme.outlineVariant,
                       strokeWidth: 1,
                     );
                   },
@@ -1450,7 +1454,7 @@ class FunctionGraphWidget extends StatelessWidget {
                           value.toStringAsFixed(1),
                           style: TextStyle(
                             fontSize: 10,
-                            color: isDark ? Colors.white : Colors.black87,
+                            color: scheme.onSurface,
                           ),
                         );
                       },
@@ -1465,7 +1469,7 @@ class FunctionGraphWidget extends StatelessWidget {
                           value.toStringAsFixed(1),
                           style: TextStyle(
                             fontSize: 10,
-                            color: isDark ? Colors.white : Colors.black87,
+                            color: scheme.onSurface,
                           ),
                         );
                       },
@@ -1481,7 +1485,7 @@ class FunctionGraphWidget extends StatelessWidget {
                 borderData: FlBorderData(
                   show: true,
                   border: Border.all(
-                    color: isDark ? Colors.grey[700]! : Colors.grey[400]!,
+                    color: scheme.outline,
                   ),
                 ),
                 minX: xMin,
@@ -1513,7 +1517,7 @@ class FunctionGraphWidget extends StatelessWidget {
                         functionLabels[i],
                         style: TextStyle(
                           fontSize: 11,
-                          color: isDark ? Colors.grey[400] : Colors.black54,
+                          color: scheme.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -1529,7 +1533,7 @@ class FunctionGraphWidget extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontStyle: FontStyle.italic,
-                  color: isDark ? Colors.grey[400] : Colors.black54,
+                  color: scheme.onSurfaceVariant,
                 ),
               ),
             ),

@@ -59,3 +59,20 @@ poetry run python run_solutions.py path/to/downloads --rerun-null-steps
 - Use `--output-dir` / `-o` to use a different base directory for both subfolders.
 - **`--skip-existing`**: Skip PDFs that already have a corresponding `.json` in `structured_output_solutions/`.
 - **`--rerun-null-steps`**: Scan `structured_output_solutions/` for JSONs with null or empty step fields and re-run vision + structured extraction for the corresponding PDFs in the same folder.
+
+## Loading merged exams into Postgres (Supabase)
+
+After merging exam + solution JSONs (e.g. with the crawler’s `match_exam_solutions.py`), you can insert all problems into the local Supabase `exam_problems` table:
+
+```bash
+# From backend/exam_parser; ensure migration add_exam_problems_solution.sql has been applied
+poetry run python load_merged_to_db.py --merged-dir path/to/structured_output_merged
+poetry run python load_merged_to_db.py --merged-dir path/to/structured_output_merged --source exam
+poetry run python load_merged_to_db.py --merged-dir path/to/structured_output_merged --dry-run
+```
+
+- **Env**: Copy `.env.example` to `.env` and set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_ANON_KEY`) for your local Supabase instance.
+- **Default merged dir** (if `--merged-dir` is omitted): `../crawler/downloads/structured_output_merged`.
+- **`--source`**: One of `var`, `exam`, `test` (default: `var`).
+- **`--dry-run`**: Only discover files and count rows; no insert.
+- One run inserts all problems from all `*_merged.json` files in the given directory. Year is parsed from each filename.
