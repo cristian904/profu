@@ -4,6 +4,7 @@ import "package:http/http.dart" as http;
 import "package:supabase_flutter/supabase_flutter.dart";
 import "app_nav.dart";
 import "pages/login_page.dart";
+import "theme/app_theme.dart";
 import "widgets/profu_drawer.dart";
 
 void _authLog(String msg) {
@@ -74,21 +75,7 @@ class _ProfuAppState extends State<ProfuApp> {
         ),
         useMaterial3: true,
       ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFF121212),
-        cardTheme: const CardThemeData(
-          color: Color(0xFF1E1E1E),
-          elevation: 2,
-        ),
-        drawerTheme: const DrawerThemeData(
-          backgroundColor: Color(0xFF1E1E1E),
-        ),
-      ),
+      darkTheme: appDarkTheme,
       themeMode: ThemeMode.dark, // Force dark mode
       initialRoute: '/',
       routes: <String, WidgetBuilder>{
@@ -183,7 +170,6 @@ class _LandingPageState extends State<LandingPage> {
         : (user?.email ?? 'Cont');
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('Profu'),
         centerTitle: true,
         actions: [
@@ -207,10 +193,10 @@ class _LandingPageState extends State<LandingPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(
-                Icons.school,
-                size: 100,
-                color: Colors.blue,
+              Image.asset(
+                'imgs/gemini_gray.png',
+                height: 180,
+                fit: BoxFit.contain,
               ),
               const SizedBox(height: 32),
               Text(
@@ -234,13 +220,17 @@ class _LandingPageState extends State<LandingPage> {
               else if (_error != null)
                 Text(
                   'Server offline',
-                  style: TextStyle(color: Colors.red[700]),
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
                 )
               else
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.check_circle, size: 20, color: Colors.green[600]),
+                    Icon(
+                      Icons.check_circle,
+                      size: 20,
+                      color: Colors.green[400],
+                    ),
                     const SizedBox(width: 8),
                     const Text('Conectat la server'),
                   ],

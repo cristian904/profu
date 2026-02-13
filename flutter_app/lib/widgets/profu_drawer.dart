@@ -35,28 +35,29 @@ class ProfuDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
     final displayLabel = user?.email ?? 'Cont';
+    final scheme = Theme.of(context).colorScheme;
 
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
           DrawerHeader(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary,
+            decoration: const BoxDecoration(
+              color: Colors.black,
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
-                  Icons.school,
-                  size: 60,
-                  color: Colors.white,
+                Image.asset(
+                  'imgs/logo_black.png',
+                  height: 80,
+                  fit: BoxFit.contain,
                 ),
-                const SizedBox(height: 16),
-                const Text(
+                const SizedBox(height: 12),
+                Text(
                   'Meniu',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: scheme.onSurface,
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
                   ),
@@ -65,7 +66,7 @@ class ProfuDrawer extends StatelessWidget {
                 Text(
                   displayLabel,
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
+                    color: scheme.onSurface.withOpacity(0.9),
                     fontSize: 14,
                   ),
                   overflow: TextOverflow.ellipsis,
@@ -75,23 +76,23 @@ class ProfuDrawer extends StatelessWidget {
             ),
           ),
           ListTile(
-            leading: const Icon(Icons.help_outline, color: Colors.orange),
+            leading: Icon(Icons.help_outline, color: scheme.primary),
             title: const Text('N-am înțeles la clasă'),
             onTap: () => _handleMenuOption(context, 'clarify'),
           ),
           ListTile(
-            leading: const Icon(Icons.edit_note, color: Colors.green),
+            leading: Icon(Icons.edit_note, color: scheme.primary),
             title: const Text('Vreau să rezolv o problemă'),
             onTap: () => _handleMenuOption(context, 'problem'),
           ),
           ListTile(
-            leading: const Icon(Icons.quiz, color: Colors.purple),
+            leading: Icon(Icons.quiz, color: scheme.primary),
             title: const Text('Simulare'),
             onTap: () => _handleMenuOption(context, 'simulation'),
           ),
           const Divider(),
           ListTile(
-            leading: const Icon(Icons.logout, color: Colors.grey),
+            leading: Icon(Icons.logout, color: scheme.onSurfaceVariant),
             title: const Text('Deconectare'),
             onTap: () async {
               Navigator.pop(context);
