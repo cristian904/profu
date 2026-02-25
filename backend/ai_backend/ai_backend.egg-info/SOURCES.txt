@@ -1,5 +1,6 @@
 README.md
 __init__.py
+config.py
 main.py
 prompts.yaml
 pyproject.toml
