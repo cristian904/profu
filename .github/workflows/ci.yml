@@ -64,17 +64,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Pin to 3.27.0 (3.28 was never released; 3.29+ removes RenderObjectWithLayoutCallbackMixin
-      # used by flutter_math_fork — see simpleclub/flutter_math#110). Revisit when package fixes.
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.27.0"
-          channel: "stable"
+          channel: stable
           cache: true
 
       - name: Get dependencies
         run: flutter pub get
+
+      # Patch flutter_math_fork for Flutter 3.29+: remove RenderObjectWithLayoutCallbackMixin
+      # (see https://github.com/simpleclub/flutter_math/pull/111 and #110).
+      - name: Patch flutter_math_fork for Flutter compatibility
+        run: |
+          FILE=$(find "$HOME/.pub-cache" -path "*flutter_math_fork*/lib/src/render/layout/layout_builder_baseline.dart" -type f 2>/dev/null | head -1)
+          if [ -n "$FILE" ] && [ -f "$FILE" ]; then
+            sed -i '/RenderObjectWithLayoutCallbackMixin,/d' "$FILE"
+            sed -i '/runLayoutCallback();/d' "$FILE"
+            echo "Patched $FILE"
+          else
+            echo "flutter_math_fork layout file not found, skipping patch"
+          fi
 
       - name: Run frontend tests
         run: flutter test --coverage --no-pub
