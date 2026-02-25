@@ -2,10 +2,10 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from dotenv import load_dotenv
 import logging
 
-from routers import clarify_once, clarify_with_steps, solve_problem
+from ai_backend.config import settings  # noqa: F401 - load .env via pydantic-settings
+from ai_backend.routers import clarify_once, clarify_with_steps, solve_problem
 
 # Configure logging
 logging.basicConfig(
@@ -14,23 +14,20 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# Load environment variables
-load_dotenv()
-
 app = FastAPI(
     title="Profu API",
     version="1.0.0",
     description="AI-Powered Bacalaureat Preparation Assistant"
 )
 
-# Add exception handler for validation errors
+# Add exception handler for validation errors (422 = Unprocessable Entity, standard for body validation)
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     print(f"[VALIDATION ERROR] Path: {request.url.path}")
     print(f"[VALIDATION ERROR] Method: {request.method}")
     print(f"[VALIDATION ERROR] Errors: {exc.errors()}")
     return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": exc.errors(), "message": "Validation error - check server logs for details"},
     )
 

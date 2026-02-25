@@ -2,14 +2,13 @@
 """
 CLI for parsing bacalaureat exam PDFs with Gemini 2.0 Vision and extracting structured JSON.
 Only processes files whose filename contains "var" or "solution" (case-insensitive).
-Usage:
-  poetry run python run.py <path_to.pdf> [--output FILE]
-  poetry run python run.py --batch <downloads_dir>
-  poetry run python run.py --structured <path_to.md_or_dir>
-  poetry run python run.py --reclassify-difficulty <path_to.json_or_dir>
-  poetry run python run.py --help
 
-Run from backend/exam_parser so that parsers resolve.
+Usage (from repo root):
+  uv run python -m exam_parser.run <path_to.pdf> [--output FILE]
+  uv run python -m exam_parser.run --batch <downloads_dir>
+  uv run python -m exam_parser.run --structured <path_to.md_or_dir>
+  uv run python -m exam_parser.run --reclassify-difficulty <path_to.json_or_dir>
+  uv run python -m exam_parser.run --help
 """
 import argparse
 import json
@@ -18,15 +17,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv()  # .env at repo root (run from repo root)
 
-_SCRIPT_DIR = Path(__file__).resolve().parent
-if _SCRIPT_DIR != Path.cwd():
-    sys.path.insert(0, str(_SCRIPT_DIR))
-
-from parsers.gemini_vision_parser import parse_with_gemini_vision
-from parsers.vision_to_structured import extract_structured_problems
-from parsers.difficulty_rules import reclassify_structured_data
+from exam_parser.parsers.gemini_vision_parser import parse_with_gemini_vision
+from exam_parser.parsers.vision_to_structured import extract_structured_problems
+from exam_parser.parsers.difficulty_rules import reclassify_structured_data
 
 
 def _is_exam_file(path: Path) -> bool:

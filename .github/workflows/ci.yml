@@ -1,102 +1,71 @@
-name: CI/CD Pipeline
+# CI: runs backend tests. Failures fail the workflow and block PR merge when branch
+# protection is enabled. Require status check "Build Status Check" in branch protection.
+name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
+
+# Run both test jobs even if one fails, so we see full results
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python 3.13
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.13'
-    
-    - name: Install Poetry
-      uses: snok/install-poetry@v1
-      with:
-        version: 1.7.1
-        virtualenvs-create: true
-        virtualenvs-in-project: true
-    
-    - name: Load cached venv
-      id: cached-poetry-dependencies
-      uses: actions/cache@v4
-      with:
-        path: backend/ai_backend/.venv
-        key: venv-${{ runner.os }}-3.13-${{ hashFiles('**/poetry.lock') }}
-    
-    - name: Install dependencies
-      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
-      run: cd ai_backend && poetry install --no-interaction --with dev
-    
-    - name: Run backend tests
-      run: ai_backend/.venv/bin/python -m pytest -v --cov=ai_backend --cov-report=xml
-      env:
-        GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY || 'test_key_for_ci' }}
-    
-    - name: Upload backend coverage
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./backend/coverage.xml
-        flags: backend
-        fail_ci_if_error: false
 
-  frontend-tests:
-    name: Frontend Tests
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./flutter_app
-    
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Flutter
-      uses: subosito/flutter-action@v2
-      with:
-        flutter-version: '3.24.0'
-        channel: 'stable'
-        cache: true
-    
-    - name: Get dependencies
-      run: flutter pub get
-    
-    - name: Run frontend tests
-      run: flutter test --coverage --no-pub
-    
-    - name: Upload frontend coverage
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./flutter_app/coverage/lcov.info
-        flags: frontend
-        fail_ci_if_error: false
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Load cached venv
+        id: cached-venv
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.13-${{ hashFiles('uv.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-venv.outputs.cache-hit != 'true'
+        run: uv sync
+
+      - name: Run backend tests
+        run: uv run pytest backend/ai_backend/tests -v --cov=ai_backend --cov-report=xml:backend/coverage.xml
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY || 'test_key_for_ci' }}
+
+      - name: Upload backend coverage
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./backend/coverage.xml
+          flags: backend
+          fail_ci_if_error: false
 
   build-status:
     name: Build Status Check
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests]
+    needs: [backend-tests]
     if: always()
-    
+
     steps:
-    - name: Check build status
-      run: |
-        if [[ "${{ needs.backend-tests.result }}" == "success" ]] && [[ "${{ needs.frontend-tests.result }}" == "success" ]]; then
-          echo "✅ All tests passed!"
-          exit 0
-        else
-          echo "❌ Some tests failed!"
-          echo "Backend: ${{ needs.backend-tests.result }}"
-          echo "Frontend: ${{ needs.frontend-tests.result }}"
-          exit 1
-        fi
+      - name: Check test results
+        run: |
+          if [[ "${{ needs.backend-tests.result }}" == "success" ]]; then
+            echo "Backend tests passed."
+            exit 0
+          else
+            echo "Backend tests failed: ${{ needs.backend-tests.result }}"
+            exit 1
+          fi

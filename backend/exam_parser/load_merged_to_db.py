@@ -5,11 +5,11 @@ Load merged exam JSONs into Supabase Postgres (exam_problems table).
 Reads all *_merged.json from a directory, parses year/source from filenames,
 maps each problem to exam_problems rows, and batch-inserts via the Supabase Python client.
 
-Usage:
-  poetry run python load_merged_to_db.py --merged-dir <path> [--source var|exam|test] [--dry-run]
-  poetry run python load_merged_to_db.py --merged-dir ../crawler/downloads/structured_output_merged
+Usage (from repo root):
+  uv run python -m exam_parser.load_merged_to_db --merged-dir <path> [--source var|exam|test] [--dry-run]
+  uv run python -m exam_parser.load_merged_to_db --merged-dir backend/crawler/downloads/structured_output_merged
 
-Requires .env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (or anon key).
+Requires repo root .env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (or anon key).
 """
 import argparse
 import json
@@ -32,8 +32,7 @@ def _debug_log(message: str, data: dict, hypothesis_id: str) -> None:
         pass
 # #endregion
 
-_SCRIPT_DIR = Path(__file__).resolve().parent
-load_dotenv(_SCRIPT_DIR / ".env")
+load_dotenv()  # .env at repo root (run from repo root)
 
 # Subject key in merged JSON -> exam_problems.subject_number
 SUBJECT_KEY_TO_NUMBER = {"s1": 1, "s2": 2, "s3": 3}

@@ -6,10 +6,10 @@ Reads all exam_problems, embeds each row's statement using Gemini (gemini-embedd
 1024 dimensions, RETRIEVAL_DOCUMENT), and inserts into documents with metadata containing
 all other exam_problems fields including id.
 
-Usage:
-  poetry run python index_exam_problems_to_documents.py [--dry-run] [--batch-size N] [--limit N]
+Usage (from repo root):
+  uv run python -m exam_parser.index_exam_problems_to_documents [--dry-run] [--batch-size N] [--limit N]
 
-Requires .env: GOOGLE_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_ANON_KEY).
+Requires repo root .env: GOOGLE_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_ANON_KEY).
 
 Before first run, apply the migration that sets documents.embedding to vector(1024):
   supabase/migrations/20260213130000_documents_embedding_1024.sql
@@ -22,8 +22,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-_SCRIPT_DIR = Path(__file__).resolve().parent
-load_dotenv(_SCRIPT_DIR / ".env")
+load_dotenv()  # .env at repo root (run from repo root)
 
 # Metadata keys from exam_problems (all except statement, which becomes content)
 METADATA_KEYS = (

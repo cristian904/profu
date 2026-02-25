@@ -12,6 +12,7 @@ import 'package:math_expressions/math_expressions.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:async' show Timer, TimeoutException;
 
+import '../config/app_config.dart';
 import '../models/conversation_models.dart';
 import '../services/conversation_repository.dart';
 import '../widgets/conversation_sidebar.dart';
@@ -30,6 +31,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
   final List<ChatMessage> _messages = [];
   bool _isStreaming = false;
   bool _isLoadingHistory = false;
+  bool _isLoadingSimilarProblems = false;
   String? _problemText;
   File? _selectedImage; // For mobile
   Uint8List? _selectedImageBytes; // For web
@@ -39,8 +41,8 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
   Conversation? _activeConversation;
   int? _conversationId;
 
-  final String _apiUrl = 'http://localhost:8000/solve-problem';
-  final String _uploadUrl = 'http://localhost:8000/solve-problem/upload';
+  String get _apiUrl => '${AppConfig.apiBaseUrl}/solve-problem';
+  String get _uploadUrl => '${AppConfig.apiBaseUrl}/solve-problem/upload';
 
   @override
   void dispose() {
@@ -267,13 +269,13 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
         _isStreaming = false;
       });
 
-      // Add the initial AI message directly in the UI (no need to call backend)
+      // Add the initial AI message directly in the UI (no question; two buttons below)
       final problemText = data['problem_text'] ?? '';
       String initialMessage;
       if (problemText.isNotEmpty) {
-        initialMessage = "Pare o problemă interesantă!\n\n**Problema:**\n$problemText\n\nAi vrea o rezolvare completă sau un hint?";
+        initialMessage = "Pare o problemă interesantă!\n\n**Problema:**\n$problemText";
       } else {
-        initialMessage = "Pare o problemă interesantă! Ai vrea o rezolvare completă sau un hint?";
+        initialMessage = "Pare o problemă interesantă!";
       }
 
       // Ensure the conversation exists and store the first assistant message
@@ -537,6 +539,327 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
     }
   }
 
+  Future<void> _requestSimilarProblems() async {
+    if (_problemText == null || _problemText!.trim().isEmpty) return;
+    if (_isLoadingSimilarProblems || _isStreaming) return;
+
+    setState(() {
+      _isLoadingSimilarProblems = true;
+    });
+
+    try {
+      final request = http.Request(
+        'POST',
+        Uri.parse('$_apiUrl/suggest-problem'),
+      );
+      request.headers['Content-Type'] = 'application/json';
+      request.body = json.encode({'problem_text': _problemText});
+
+      final response = await request.send();
+      final body = await response.stream.transform(utf8.decoder).join();
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        final data = json.decode(body) as Map<String, dynamic>;
+        final message = data['message'] as String? ?? 'Nu am găsit probleme similare.';
+        final problemsList = data['problems'] as List<dynamic>? ?? [];
+        final statements = problemsList
+            .map((e) => (e as Map<String, dynamic>)['statement'] as String? ?? '')
+            .toList();
+
+        setState(() {
+          _isLoadingSimilarProblems = false;
+          _messages.add(ChatMessage(
+            text: message,
+            isUser: false,
+            timestamp: DateTime.now(),
+            isStreaming: false,
+            suggestedProblems: statements.isNotEmpty ? statements : null,
+          ));
+        });
+
+        if (_conversationId != null && message.trim().isNotEmpty) {
+          _conversationRepository
+              .createMessage(
+                conversationId: _conversationId!,
+                speaker: ConversationSpeaker.assistant,
+                content: message,
+              )
+              .then((_) {}, onError: (_) {});
+        }
+        _scrollToBottom();
+      } else {
+        setState(() {
+          _isLoadingSimilarProblems = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Eroare la sugestii: ${response.statusCode}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isLoadingSimilarProblems = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Eroare: $e')),
+        );
+      }
+    }
+  }
+
+  void _onWantToSolve() {
+    if (_isStreaming || _problemText == null || _problemText!.trim().isEmpty) return;
+
+    setState(() {
+      _messages.add(ChatMessage(
+        text: 'Vreau să o rezolv',
+        isUser: true,
+        timestamp: DateTime.now(),
+      ));
+      _messages.add(ChatMessage(
+        text: 'Bună alegere. Vrei o rezolvare completă sau un hint?',
+        isUser: false,
+        timestamp: DateTime.now(),
+        isStreaming: false,
+        solutionChoiceButtons: ['Rezolvare completă', 'Hint'],
+      ));
+    });
+
+    if (_conversationId != null) {
+      _conversationRepository
+          .createMessage(
+            conversationId: _conversationId!,
+            speaker: ConversationSpeaker.user,
+            content: 'Vreau să o rezolv',
+          )
+          .then((_) {}, onError: (_) {});
+      _conversationRepository
+          .createMessage(
+            conversationId: _conversationId!,
+            speaker: ConversationSpeaker.assistant,
+            content: 'Bună alegere. Vrei o rezolvare completă sau un hint?',
+          )
+          .then((_) {}, onError: (_) {});
+    }
+    _scrollToBottom();
+  }
+
+  void _selectSuggestedProblem(String statement) {
+    if (statement.trim().isEmpty || _isStreaming) return;
+
+    setState(() {
+      _problemText = statement;
+      _messages.add(ChatMessage(
+        text: 'Vreau să rezolv această problemă',
+        isUser: true,
+        timestamp: DateTime.now(),
+      ));
+      final problemPreview = statement.length > 150
+          ? '${statement.substring(0, 150)}...'
+          : statement;
+      _messages.add(ChatMessage(
+        text: 'Am înțeles că vrei să rezolvi problema „$problemPreview”. Vrei o rezolvare completă sau un hint?',
+        isUser: false,
+        timestamp: DateTime.now(),
+        isStreaming: false,
+        solutionChoiceButtons: ['Rezolvare completă', 'Hint'],
+      ));
+    });
+
+    if (_conversationId != null) {
+      _conversationRepository
+          .createMessage(
+            conversationId: _conversationId!,
+            speaker: ConversationSpeaker.user,
+            content: 'Vreau să rezolv această problemă',
+          )
+          .then((_) {}, onError: (_) {});
+      final problemPreview = statement.length > 150
+          ? '${statement.substring(0, 150)}...'
+          : statement;
+      final aiText = 'Am înțeles că vrei să rezolvi problema „$problemPreview”. Vrei o rezolvare completă sau un hint?';
+      _conversationRepository
+          .createMessage(
+            conversationId: _conversationId!,
+            speaker: ConversationSpeaker.assistant,
+            content: aiText,
+          )
+          .then((_) {}, onError: (_) {});
+    }
+    _scrollToBottom();
+  }
+
+  void _sendSolutionChoice(String choice) {
+    if (_problemText == null || _problemText!.trim().isEmpty || _isStreaming) return;
+
+    setState(() {
+      _messages.add(ChatMessage(
+        text: choice,
+        isUser: true,
+        timestamp: DateTime.now(),
+      ));
+      _isStreaming = true;
+    });
+
+    if (_conversationId != null) {
+      _conversationRepository
+          .createMessage(
+            conversationId: _conversationId!,
+            speaker: ConversationSpeaker.user,
+            content: choice,
+          )
+          .then((_) {}, onError: (_) {});
+    }
+
+    final aiMessageIndex = _messages.length;
+    setState(() {
+      _messages.add(ChatMessage(
+        text: '',
+        isUser: false,
+        timestamp: DateTime.now(),
+        isStreaming: true,
+      ));
+    });
+    _scrollToBottom();
+
+    _streamSolutionWithQuery(choice, _problemText!, aiMessageIndex);
+  }
+
+  Future<void> _streamSolutionWithQuery(
+    String query,
+    String problemText,
+    int aiMessageIndex,
+  ) async {
+    Timer? timeoutTimer;
+    try {
+      final request = http.Request('POST', Uri.parse('$_apiUrl/stream'));
+      request.headers['Content-Type'] = 'application/json';
+      final history = <Map<String, String>>[];
+      for (int i = 0; i < _messages.length - 1; i++) {
+        final msg = _messages[i];
+        if (msg.text.isNotEmpty) {
+          history.add({
+            'role': msg.isUser ? 'user' : 'assistant',
+            'content': msg.text,
+          });
+        }
+      }
+      request.body = json.encode({
+        'query': query,
+        'problem_text': problemText,
+        'history': history,
+      });
+
+      final streamedResponse = await request.send();
+      if (streamedResponse.statusCode != 200) {
+        if (mounted && aiMessageIndex < _messages.length) {
+          setState(() {
+            _messages[aiMessageIndex].text =
+                'Eroare: Nu am putut obține răspuns de la server.';
+            _messages[aiMessageIndex].isStreaming = false;
+            _isStreaming = false;
+          });
+        } else {
+          setState(() => _isStreaming = false);
+        }
+        return;
+      }
+
+      String accumulatedText = '';
+      bool shouldStop = false;
+      timeoutTimer = Timer(const Duration(seconds: 30), () {
+        if (mounted && aiMessageIndex < _messages.length) {
+          setState(() {
+            _messages[aiMessageIndex].isStreaming = false;
+            _isStreaming = false;
+          });
+        }
+      });
+
+      await for (var chunk in streamedResponse.stream
+          .transform(utf8.decoder)
+          .timeout(const Duration(seconds: 30))) {
+        if (shouldStop) break;
+        final lines = chunk.split('\n');
+        for (var line in lines) {
+          if (shouldStop) break;
+          if (line.startsWith('data: ')) {
+            final data = line.substring(6);
+            if (data == '[DONE]') {
+              shouldStop = true;
+              timeoutTimer.cancel();
+              if (mounted && aiMessageIndex < _messages.length) {
+                setState(() {
+                  _messages[aiMessageIndex].isStreaming = false;
+                  _isStreaming = false;
+                });
+                final fullText = accumulatedText;
+                if (_conversationId != null && fullText.trim().isNotEmpty) {
+                  _conversationRepository
+                      .createMessage(
+                        conversationId: _conversationId!,
+                        speaker: ConversationSpeaker.assistant,
+                        content: fullText,
+                      )
+                      .then((_) {}, onError: (_) {});
+                }
+              } else {
+                setState(() => _isStreaming = false);
+              }
+              break;
+            } else if (data.startsWith('[META]')) {
+              try {
+                final metaJson = data.substring(6);
+                final metadata = json.decode(metaJson);
+                if (metadata['ttft'] != null &&
+                    mounted &&
+                    aiMessageIndex < _messages.length) {
+                  setState(() {
+                    _messages[aiMessageIndex].timeToFirstToken =
+                        (metadata['ttft'] as num).toDouble();
+                  });
+                }
+              } catch (_) {}
+            } else if (data.isNotEmpty) {
+              final unescapedData = data.replaceAll('\\n', '\n');
+              accumulatedText += unescapedData;
+              if (mounted && aiMessageIndex < _messages.length) {
+                setState(() {
+                  _messages[aiMessageIndex].text = accumulatedText;
+                });
+                _scrollToBottom();
+              }
+            }
+          }
+        }
+        if (shouldStop) break;
+      }
+      timeoutTimer.cancel();
+    } on TimeoutException {
+      timeoutTimer?.cancel();
+    } catch (e) {
+      timeoutTimer?.cancel();
+      if (mounted && aiMessageIndex < _messages.length) {
+        setState(() {
+          _messages[aiMessageIndex].text = 'Eroare de conexiune: $e';
+          _messages[aiMessageIndex].isStreaming = false;
+          _isStreaming = false;
+        });
+      } else if (mounted) {
+        setState(() => _isStreaming = false);
+      }
+    } finally {
+      if (mounted && aiMessageIndex < _messages.length) {
+        setState(() {
+          _messages[aiMessageIndex].isStreaming = false;
+          _isStreaming = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -673,8 +996,19 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                               return const SizedBox.shrink();
                             }
 
+                            int? firstAiIndex;
+                            for (int i = 0; i < _messages.length; i++) {
+                              if (!_messages[i].isUser) {
+                                firstAiIndex = i;
+                                break;
+                              }
+                            }
+                            final isFirstAiMessage =
+                                firstAiIndex != null && messageIndex == firstAiIndex;
+
                             return _buildMessageBubble(
                               _messages[messageIndex],
+                              isFirstAiMessage: isFirstAiMessage,
                               key: ValueKey(
                                 'msg_${messageIndex}_${_messages[messageIndex].timestamp.millisecondsSinceEpoch}_${_messages[messageIndex].isStreaming}',
                               ),
@@ -766,7 +1100,8 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
     );
   }
 
-  Widget _buildMessageBubble(ChatMessage message, {Key? key}) {
+  Widget _buildMessageBubble(ChatMessage message,
+      {bool isFirstAiMessage = false, Key? key}) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -919,6 +1254,209 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
               ],
             ),
           ),
+          // Two buttons under first AI message: similar problems + want to solve
+          if (isFirstAiMessage &&
+              !message.isUser &&
+              !message.isStreaming &&
+              _problemText != null &&
+              _problemText!.trim().isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 0, bottom: 10),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: [
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _isLoadingSimilarProblems || _isStreaming
+                          ? null
+                          : _requestSimilarProblems,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.cyan.shade400.withOpacity(0.9),
+                            width: 1.8,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.cyan.withOpacity(0.15),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.cyan.shade900.withOpacity(0.25),
+                              Colors.cyan.shade700.withOpacity(0.12),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isLoadingSimilarProblems)
+                              const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            else
+                              Icon(Icons.auto_awesome, size: 18, color: Colors.cyan.shade300),
+                            const SizedBox(width: 10),
+                            Text(
+                              _isLoadingSimilarProblems ? 'Se încarcă...' : 'vreau probleme similare',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.cyan.shade200,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _isStreaming ? null : _onWantToSolve,
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: Colors.teal.shade400.withOpacity(0.9),
+                            width: 1.8,
+                          ),
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.teal.shade900.withOpacity(0.25),
+                              Colors.teal.shade700.withOpacity(0.12),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.play_circle_outline, size: 18, color: Colors.teal.shade300),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Vreau să o rezolv',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.teal.shade200,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          // 5 suggested problem buttons (same style family)
+          if (message.suggestedProblems != null &&
+              message.suggestedProblems!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: List.generate(
+                  message.suggestedProblems!.length,
+                  (i) {
+                    final statement = message.suggestedProblems![i];
+                    final isDisabled = _isStreaming;
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: isDisabled ? null : () => _selectSuggestedProblem(statement),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: (Colors.teal.shade300).withOpacity(isDisabled ? 0.4 : 0.85),
+                              width: 1.5,
+                            ),
+                            color: Colors.teal.shade900.withOpacity(isDisabled ? 0.1 : 0.2),
+                          ),
+                          child: Text(
+                            'Problema ${i + 1}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: isDisabled
+                                  ? Colors.teal.shade700
+                                  : Colors.teal.shade200,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          // "Rezolvare completă" / "Hint" choice buttons
+          if (message.solutionChoiceButtons != null &&
+              message.solutionChoiceButtons!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                children: List.generate(
+                  message.solutionChoiceButtons!.length,
+                  (i) {
+                    final label = message.solutionChoiceButtons![i];
+                    final isDisabled = _isStreaming;
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: isDisabled ? null : () => _sendSolutionChoice(label),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: (Colors.teal.shade300).withOpacity(isDisabled ? 0.4 : 0.85),
+                              width: 1.5,
+                            ),
+                            color: Colors.teal.shade900.withOpacity(isDisabled ? 0.1 : 0.2),
+                          ),
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: isDisabled
+                                  ? Colors.teal.shade700
+                                  : Colors.teal.shade200,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
         ],
       ),
     ),
@@ -933,6 +1471,10 @@ class ChatMessage {
   final DateTime timestamp;
   bool isStreaming;
   double? timeToFirstToken;
+  /// When non-null, show 5 cyan buttons below the bubble to pick a suggested problem.
+  List<String>? suggestedProblems;
+  /// When non-null, show choice buttons e.g. "Rezolvare completă", "Hint".
+  List<String>? solutionChoiceButtons;
 
   ChatMessage({
     required this.text,
@@ -940,6 +1482,8 @@ class ChatMessage {
     required this.timestamp,
     this.isStreaming = false,
     this.timeToFirstToken,
+    this.suggestedProblems,
+    this.solutionChoiceButtons,
   });
 }
 

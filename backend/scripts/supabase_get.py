@@ -1,8 +1,8 @@
 """
 Insert a dummy user into local Supabase, then GET users to verify.
-Uses stdlib only. Set SUPABASE_URL and SUPABASE_ANON_KEY in backend/.env.
+Uses stdlib only. Set SUPABASE_URL and SUPABASE_ANON_KEY in repo root .env.
 Use SUPABASE_SERVICE_ROLE_KEY (from npx supabase status) to see the user in the GET (RLS).
-Run from backend: python scripts/supabase_get.py
+Run from repo root: uv run python backend/scripts/supabase_get.py  (or from backend: python scripts/supabase_get.py)
 """
 import json
 import os
@@ -12,8 +12,8 @@ from pathlib import Path
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-# Load backend/.env if present (python-dotenv not required; manual load)
-_env_file = Path(__file__).resolve().parent.parent / ".env"
+# Load repo root .env if present (python-dotenv not required; manual load)
+_env_file = Path(__file__).resolve().parent.parent.parent / ".env"
 if _env_file.exists():
     for line in _env_file.read_text().splitlines():
         line = line.strip()
@@ -66,7 +66,7 @@ def request(
 def main() -> None:
     if not SUPABASE_ANON_KEY:
         print(
-            "Set SUPABASE_ANON_KEY in backend/.env (from 'npx supabase status').",
+            "Set SUPABASE_ANON_KEY in repo root .env (from 'npx supabase status').",
             file=sys.stderr,
         )
         sys.exit(1)
