@@ -1,7 +1,20 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:profu_app/main.dart';
+import 'package:profu_app/widgets/profu_drawer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues({});
+    await Supabase.initialize(
+      url: 'https://test.supabase.co',
+      anonKey: 'test-anon-key',
+    );
+  });
+
   group('Main App Tests', () {
     testWidgets('App should build without errors', (WidgetTester tester) async {
       // Build the app
@@ -19,36 +32,48 @@ void main() {
     });
 
     testWidgets('App should have a drawer menu', (WidgetTester tester) async {
-      await tester.pumpWidget(const ProfuApp());
+      // Pump a scaffold with drawer (drawer is only on LandingPage when logged in)
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: AppBar(title: const Text('Profu')),
+            drawer: const ProfuDrawer(),
+            body: const SizedBox.shrink(),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
 
-      // Find and tap the menu button
       final menuButton = find.byTooltip('Open navigation menu');
       expect(menuButton, findsOneWidget);
-      
+
       await tester.tap(menuButton);
       await tester.pumpAndSettle();
 
-      // Verify drawer items are present
       expect(find.text('N-am înțeles la clasă'), findsOneWidget);
       expect(find.text('Vreau să rezolv o problemă'), findsOneWidget);
       expect(find.text('Simulare'), findsOneWidget);
     });
 
     testWidgets('Drawer menu items are tappable', (WidgetTester tester) async {
-      await tester.pumpWidget(const ProfuApp());
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: AppBar(title: const Text('Profu')),
+            drawer: const ProfuDrawer(),
+            body: const SizedBox.shrink(),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
 
-      // Open drawer
       final menuButton = find.byTooltip('Open navigation menu');
       await tester.tap(menuButton);
       await tester.pumpAndSettle();
 
-      // Tap on first menu item
       await tester.tap(find.text('N-am înțeles la clasă'));
       await tester.pumpAndSettle();
 
-      // Should navigate to chat page - verify by checking for the chat page title
       expect(find.text('N-am înțeles la clasă'), findsAtLeastNWidgets(1));
     });
   });

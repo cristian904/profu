@@ -47,27 +47,28 @@ class ProfuDrawer extends StatelessWidget {
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Image.asset(
                   'imgs/logo_black.png',
-                  height: 80,
+                  height: 56,
                   fit: BoxFit.contain,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Text(
                   'Meniu',
                   style: TextStyle(
                     color: scheme.onSurface,
-                    fontSize: 24,
+                    fontSize: 20,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 Text(
                   displayLabel,
                   style: TextStyle(
                     color: scheme.onSurface.withOpacity(0.9),
-                    fontSize: 14,
+                    fontSize: 12,
                   ),
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,

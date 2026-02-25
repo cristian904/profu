@@ -20,14 +20,14 @@ app = FastAPI(
     description="AI-Powered Bacalaureat Preparation Assistant"
 )
 
-# Add exception handler for validation errors
+# Add exception handler for validation errors (422 = Unprocessable Entity, standard for body validation)
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     print(f"[VALIDATION ERROR] Path: {request.url.path}")
     print(f"[VALIDATION ERROR] Method: {request.method}")
     print(f"[VALIDATION ERROR] Errors: {exc.errors()}")
     return JSONResponse(
-        status_code=status.HTTP_400_BAD_REQUEST,
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": exc.errors(), "message": "Validation error - check server logs for details"},
     )
 
