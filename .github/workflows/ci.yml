@@ -73,18 +73,24 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      # Patch flutter_math_fork for Flutter 3.29+: remove RenderObjectWithLayoutCallbackMixin
-      # (see https://github.com/simpleclub/flutter_math/pull/111 and #110).
+      # Overwrite flutter_math_fork layout file with patched version (Flutter 3.29+ removed
+      # RenderObjectWithLayoutCallbackMixin — see simpleclub/flutter_math#110, #111).
       - name: Patch flutter_math_fork for Flutter compatibility
+        working-directory: .
         run: |
-          FILE=$(find "$HOME/.pub-cache" -path "*flutter_math_fork*/lib/src/render/layout/layout_builder_baseline.dart" -type f 2>/dev/null | head -1)
-          if [ -n "$FILE" ] && [ -f "$FILE" ]; then
-            sed -i '/RenderObjectWithLayoutCallbackMixin,/d' "$FILE"
-            sed -i '/runLayoutCallback();/d' "$FILE"
-            echo "Patched $FILE"
-          else
-            echo "flutter_math_fork layout file not found, skipping patch"
+          for CACHE in "$PUB_CACHE" "$HOME/.pub-cache" "$RUNNER_TOOL_CACHE" ""; do
+            [ -z "$CACHE" ] || [ ! -d "$CACHE" ] && continue
+            TARGET=$(find "$CACHE" -path "*flutter_math_fork*/lib/src/render/layout/layout_builder_baseline.dart" -type f 2>/dev/null | head -1)
+            [ -n "$TARGET" ] && break
+          done
+          if [ -z "$TARGET" ] || [ ! -f "$TARGET" ]; then
+            echo "::error::flutter_math_fork layout file not found"
+            echo "PUB_CACHE=$PUB_CACHE HOME=$HOME"
+            find "$HOME" -name "layout_builder_baseline.dart" -path "*flutter_math*" 2>/dev/null | head -5
+            exit 1
           fi
+          cp .github/flutter_math_fork_patch/layout_builder_baseline.dart "$TARGET"
+          echo "Patched $TARGET"
 
       - name: Run frontend tests
         run: flutter test --coverage --no-pub
