@@ -64,13 +64,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Pin to 3.28: flutter_math_fork uses RenderObjectWithLayoutCallbackMixin
-      # removed in Flutter 3.29 (see simpleclub/flutter_math#110). Revisit when
-      # flutter_math_fork publishes a fix (e.g. PR #111).
+      # Pin to 3.27.0 (3.28 was never released; 3.29+ removes RenderObjectWithLayoutCallbackMixin
+      # used by flutter_math_fork — see simpleclub/flutter_math#110). Revisit when package fixes.
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.28.0"
+          flutter-version: "3.27.0"
           channel: "stable"
           cache: true
 
