@@ -1,3 +1,16 @@
+Metadata-Version: 2.4
+Name: exam-parser
+Version: 1.0.0
+Summary: Parse bacalaureat exam PDFs to markdown/LaTeX with Gemini 2.0 Vision
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: google-genai>=1.0.0
+Requires-Dist: python-dotenv>=1.0.0
+Requires-Dist: supabase>=2.0.0
+Requires-Dist: tqdm>=4.66.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+
 # Exam Parser (Bacalaureat)
 
 Parse bacalaureat exam PDFs to markdown with LaTeX math using **Gemini 2.0 Vision**. One PDF in, one `.md` out (structure, headings, and math preserved as `$...$` and `$$...$$`).
@@ -6,26 +19,25 @@ No endpoints or frontend; runs locally with `GOOGLE_API_KEY` for the Gemini API.
 
 ## Setup
 
-From the **repo root**:
-
 ```bash
-uv sync
+cd backend/exam_parser
+poetry install
 ```
 
-- **Python**: 3.11+.
-- **API key**: Set `GOOGLE_API_KEY` in the environment (use the single `.env` at repo root; copy `.env.example` to `.env` and fill it).
+- **Python**: 3.11–3.13.
+- **API key**: Set `GOOGLE_API_KEY` in the environment (e.g. copy `.env.example` to `.env` and fill it).
 
 ## Usage
 
-Run from the **repo root**:
+Run from `backend/exam_parser`:
 
 ```bash
 # Single PDF — output: same dir as PDF, <stem>.md (or use -o FILE)
-uv run python -m exam_parser.run path/to/exam.pdf
-uv run python -m exam_parser.run path/to/exam.pdf --output path/to/out.md
+poetry run python run.py path/to/exam.pdf
+poetry run python run.py path/to/exam.pdf --output path/to/out.md
 
 # Batch — all PDFs in a folder; outputs to <dir>/vision_outputs/<stem>.md (skips existing)
-uv run python -m exam_parser.run --batch path/to/downloads
+poetry run python run.py --batch path/to/downloads
 ```
 
 ## Output
@@ -42,16 +54,16 @@ Scoring-scale (barem/rezolvare) PDFs can be parsed into structured JSON with sol
 1. **Vision**: Gemini 2.0 Vision extracts text from the PDF and outputs markdown with structure and LaTeX/markdown formulas (`$...$`, `$$...$$`).
 2. **Structure**: A second Gemini call turns that markdown into JSON with keys `s1`, `s2`, `s3` (only subjects present in the document). For each exercise: `number`, optional `item` (a/b/c/d for s2/s3), and `solution_steps` — either an array of `{"step": "...", "score": <number>}` when the solution is in a table, or a single string when it is plain text.
 
-From the **repo root**:
+Run from `backend/exam_parser`:
 
 ```bash
 # Single PDF or directory of PDFs; outputs are saved in the same folder as the PDF(s)
-uv run python -m exam_parser.run_solutions path/to/solution.pdf
-uv run python -m exam_parser.run_solutions path/to/downloads
-uv run python -m exam_parser.run_solutions path/to/downloads --output-dir path/to/base --skip-existing
+poetry run python run_solutions.py path/to/solution.pdf
+poetry run python run_solutions.py path/to/downloads
+poetry run python run_solutions.py path/to/downloads --output-dir path/to/base --skip-existing
 
 # Re-run only PDFs whose JSON has null or empty step fields (fixes bad markdown parsing)
-uv run python -m exam_parser.run_solutions path/to/downloads --rerun-null-steps
+poetry run python run_solutions.py path/to/downloads --rerun-null-steps
 ```
 
 - **Output location**: By default, outputs are under the folder containing the PDF(s). Two subfolders are created:
@@ -66,13 +78,13 @@ uv run python -m exam_parser.run_solutions path/to/downloads --rerun-null-steps
 After merging exam + solution JSONs (e.g. with the crawler’s `match_exam_solutions.py`), you can insert all problems into the local Supabase `exam_problems` table:
 
 ```bash
-# From repo root; ensure migration add_exam_problems_solution.sql has been applied
-uv run python -m exam_parser.load_merged_to_db --merged-dir path/to/structured_output_merged
-uv run python -m exam_parser.load_merged_to_db --merged-dir path/to/structured_output_merged --source exam
-uv run python -m exam_parser.load_merged_to_db --merged-dir path/to/structured_output_merged --dry-run
+# From backend/exam_parser; ensure migration add_exam_problems_solution.sql has been applied
+poetry run python load_merged_to_db.py --merged-dir path/to/structured_output_merged
+poetry run python load_merged_to_db.py --merged-dir path/to/structured_output_merged --source exam
+poetry run python load_merged_to_db.py --merged-dir path/to/structured_output_merged --dry-run
 ```
 
-- **Env**: Use the repo root `.env`; set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_ANON_KEY`) for your local Supabase instance.
+- **Env**: Copy `.env.example` to `.env` and set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_ANON_KEY`) for your local Supabase instance.
 - **Default merged dir** (if `--merged-dir` is omitted): `../crawler/downloads/structured_output_merged`.
 - **`--source`**: One of `var`, `exam`, `test` (default: `var`).
 - **`--dry-run`**: Only discover files and count rows; no insert.

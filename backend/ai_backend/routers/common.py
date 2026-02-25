@@ -1,11 +1,13 @@
 """
 Common utilities and models shared between clarify routers.
 """
-from pydantic import BaseModel
-from langchain_google_genai import ChatGoogleGenerativeAI
-import os
-import yaml
 from pathlib import Path
+
+import yaml
+from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic import BaseModel
+
+from ai_backend.config import settings
 
 
 # Load prompts from YAML file
@@ -15,14 +17,13 @@ with open(prompts_path, 'r', encoding='utf-8') as f:
 
 
 def get_llm():
-    """Initialize and return Gemini LLM instance"""
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
+    """Initialize and return Gemini LLM instance (model from config)."""
+    if not settings.google_api_key:
         raise ValueError("GOOGLE_API_KEY not found in environment variables")
     return ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model=settings.gemini_model,
         temperature=0.0,
-        google_api_key=api_key,
+        google_api_key=settings.google_api_key,
     )
 
 

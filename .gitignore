@@ -17,9 +17,8 @@ supabase/
 # Environment variables
 .env
 *.env
-
-# uv
-uv.lock
+# Allow Flutter app default .env (safe placeholders) so the app builds
+!flutter_app/.env
 
 # IDE
 .vscode/

@@ -1,8 +1,10 @@
 import "package:flutter/foundation.dart";
 import "package:flutter/material.dart";
+import "package:flutter_dotenv/flutter_dotenv.dart";
 import "package:http/http.dart" as http;
 import "package:supabase_flutter/supabase_flutter.dart";
 import "app_nav.dart";
+import "config/app_config.dart";
 import "pages/login_page.dart";
 import "theme/app_theme.dart";
 import "widgets/profu_drawer.dart";
@@ -11,17 +13,12 @@ void _authLog(String msg) {
   if (kDebugMode) debugPrint('[AUTH_DEBUG] $msg');
 }
 
-/// Local Supabase URL and anon key. After running `npx supabase start` in the
-/// repo root, copy the API URL and anon key from the CLI output (or from
-/// supabase/.temp/env) and replace these placeholders.
-const String _supabaseUrl = "http://127.0.0.1:54321";
-const String _supabaseAnonKey = "YOUR_ANON_KEY"; // Replace with output of: npx supabase start
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
   await Supabase.initialize(
-    url: _supabaseUrl,
-    anonKey: _supabaseAnonKey,
+    url: AppConfig.supabaseUrl,
+    anonKey: AppConfig.supabaseAnonKey,
   );
   if (kDebugMode) {
     final session = Supabase.instance.client.auth.currentSession;
@@ -102,9 +99,6 @@ class _LandingPageState extends State<LandingPage> {
   String? _error;
   String? _displayName;
 
-  // Update this URL to match your FastAPI backend
-  final String _apiUrl = 'http://localhost:8000/index';
-
   @override
   void initState() {
     super.initState();
@@ -142,7 +136,7 @@ class _LandingPageState extends State<LandingPage> {
     });
 
     try {
-      final response = await http.get(Uri.parse(_apiUrl));
+      final response = await http.get(Uri.parse('${AppConfig.apiBaseUrl}/index'));
 
       if (response.statusCode == 200) {
         setState(() {

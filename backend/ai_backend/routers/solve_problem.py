@@ -18,6 +18,7 @@ import base64
 import logging
 from io import BytesIO
 
+from ai_backend.config import settings
 from .common import get_llm, Message, PROMPTS
 
 # Set up logger
@@ -44,6 +45,22 @@ class ProblemSolveRequest(BaseModel):
     history: list[Message] = []
 
 
+class SuggestProblemRequest(BaseModel):
+    """Request model for similar problem suggestions"""
+    problem_text: str
+
+
+class SuggestedProblemItem(BaseModel):
+    """One suggested problem (statement only for FE buttons)"""
+    statement: str
+
+
+class SuggestProblemResponse(BaseModel):
+    """Response for /suggest-problem: message + list of problems for FE buttons"""
+    message: str
+    problems: list[SuggestedProblemItem]
+
+
 def extract_json_from_text(text: str) -> dict:
     """Extract JSON from text that might contain markdown code blocks"""
     json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
@@ -60,23 +77,20 @@ def extract_json_from_text(text: str) -> dict:
 async def perform_ocr(image_bytes: bytes) -> str:
     """Use Gemini Vision API to extract text from image"""
     logger.info(f"[OCR] Starting OCR for image of {len(image_bytes)} bytes")
-    
-    from langchain_google_genai import ChatGoogleGenerativeAI
+
     from langchain_core.messages import HumanMessage
+    from langchain_google_genai import ChatGoogleGenerativeAI
     from PIL import Image
-    import os
-    
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
+
+    if not settings.google_api_key:
         logger.error("[OCR] GOOGLE_API_KEY not found in environment")
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not found")
-    
+
     logger.info("[OCR] Initializing Gemini Vision model")
-    # Use Gemini vision model (gemini-2.0-flash-exp supports vision)
     vision_llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
+        model=settings.gemini_model,
         temperature=0.0,
-        google_api_key=api_key,
+        google_api_key=settings.google_api_key,
     )
     
     prompt = """Extrage textul din această imagine. Dacă există formule matematice, grafice sau diagrame, 
@@ -199,6 +213,85 @@ async def upload_problem_image(
         logger.error(f"[UPLOAD] Error processing image: {str(e)}")
         logger.error(f"[UPLOAD] Traceback: {error_trace}")
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
+
+
+def _normalize_embedding(values: list[float]) -> list[float]:
+    """Normalize embedding to unit length for cosine / inner-product similarity."""
+    import math
+    norm = math.sqrt(sum(x * x for x in values))
+    if norm <= 0:
+        return values
+    return [x / norm for x in values]
+
+
+def _embed_query(text: str) -> list[float]:
+    """Embed a single query string with Gemini (1024-dim, RETRIEVAL_QUERY, normalized)."""
+    from google import genai
+    from google.genai import types
+
+    if not settings.google_api_key:
+        raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not found")
+
+    client = genai.Client(api_key=settings.google_api_key)
+    result = client.models.embed_content(
+        model="gemini-embedding-001",
+        contents=[text],
+        config=types.EmbedContentConfig(
+            output_dimensionality=1024,
+            task_type="RETRIEVAL_QUERY",
+        ),
+    )
+    if not result.embeddings or len(result.embeddings) == 0:
+        raise HTTPException(status_code=500, detail="Embedding returned no result")
+    vals = list(result.embeddings[0].values)
+    return _normalize_embedding(vals)
+
+
+@router.post("/suggest-problem", response_model=SuggestProblemResponse)
+async def suggest_problem(body: SuggestProblemRequest):
+    """
+    Vector search in documents table; return top 5 similar problem statements.
+    Used when the user taps "vreau probleme similare" after the first AI response.
+    """
+    problem_text = (body.problem_text or "").strip()
+    if not problem_text:
+        raise HTTPException(status_code=400, detail="problem_text is required and cannot be empty")
+
+    if not settings.supabase_url or not settings.supabase_key:
+        raise HTTPException(
+            status_code=500,
+            detail="SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_ANON_KEY) must be set",
+        )
+
+    try:
+        query_embedding = _embed_query(problem_text)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("[SUGGEST] Embedding failed")
+        raise HTTPException(status_code=500, detail=f"Embedding failed: {str(e)}")
+
+    try:
+        from supabase import create_client
+        client = create_client(settings.supabase_url, settings.supabase_key)
+        r = client.rpc("match_documents", {"query_embedding": query_embedding, "match_count": 5}).execute()
+        rows = (r.data or []) if hasattr(r, "data") else []
+    except Exception as e:
+        logger.exception("[SUGGEST] match_documents RPC failed")
+        raise HTTPException(status_code=500, detail=f"Vector search failed: {str(e)}")
+
+    doc_ids = [row.get("id") for row in rows]
+    logger.info("[SUGGEST] document ids shown to user (check in DB): %s", doc_ids)
+
+    problems = [SuggestedProblemItem(statement=(row.get("content") or "")) for row in rows]
+    # Build message with full problem text for each
+    if not problems:
+        message = "Nu am găsit probleme similare în baza de date."
+    else:
+        parts = [f"{i + 1}. {p.statement}" for i, p in enumerate(problems)]
+        message = "Uite " + str(len(problems)) + " probleme asemanatoare cu acesta:\n\n" + "\n\n".join(parts)
+
+    return SuggestProblemResponse(message=message, problems=problems)
 
 
 async def detect_intent(state: ProblemSolvingState) -> ProblemSolvingState:

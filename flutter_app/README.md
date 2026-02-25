@@ -79,18 +79,25 @@ The streaming is implemented using Server-Sent Events (SSE) for real-time token 
 
 ## Configuration
 
-### Backend (FastAPI)
-To change the backend URL, edit the `_apiUrl` variable in:
-- `lib/main.dart` (landing page)
-- `lib/pages/clarify_chat_page.dart`
-- `lib/pages/solve_problem_page.dart`
+The app uses the **same `.env` file as the backend** (repo root). From the repo root, run:
+
+```bash
+uv run poe ui
+```
+
+This copies the root `.env` into `flutter_app/.env` and then starts Flutter, so you only maintain one `.env` (see root `.env.example`).
+
+- **API_BASE_URL** (optional): FastAPI backend base URL; default `http://localhost:8000`.
+- **SUPABASE_URL**, **SUPABASE_ANON_KEY**: Same as for ai_backend; set in root `.env`.
+
+If you run `flutter run` directly from `flutter_app`, copy the root env first: `cp ../.env .env` (or the committed default `.env` in `flutter_app` is used).
 
 ### Supabase (local)
 The app uses Supabase for auth and for CRUD (conversations, etc.). For local development:
 
 1. From the repo root, run `npm install` then `npx supabase start` (see `../supabase/README.md`).
 2. Run the auth migration: in the Supabase SQL Editor, run `backend/sql/auth_and_rls_migration.sql` (after `init.sql`).
-3. In `lib/main.dart`, set `_supabaseUrl` and `_supabaseAnonKey` to the API URL and **anon** key printed by `npx supabase start`.
+3. In the **repo root** `.env`, set `SUPABASE_URL` and `SUPABASE_ANON_KEY` to the API URL and **anon** key printed by `npx supabase start`. Use `poe ui` so the Flutter app gets the same values.
 4. Use `Supabase.instance.client` in your code for table access; the user's JWT is sent automatically and RLS enforces per-user data.
 
 ### Google Sign-In (optional)

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
 CLI for parsing scoring-scale (barem/solution) PDFs with Gemini Vision and extracting structured JSON.
-Usage:
-  poetry run python run_solutions.py <path_to.pdf_or_dir> [--output-dir DIR] [--skip-existing]
-  poetry run python run_solutions.py <directory> --rerun-null-steps
-  poetry run python run_solutions.py --help
 
-Run from backend/exam_parser so that parsers resolve.
+Usage (from repo root):
+  uv run python -m exam_parser.run_solutions <path_to.pdf_or_dir> [--output-dir DIR] [--skip-existing]
+  uv run python -m exam_parser.run_solutions <directory> --rerun-null-steps
+  uv run python -m exam_parser.run_solutions --help
+
 Outputs are saved in the same folder as the PDF(s): vision_outputs_solutions/ (markdown) and structured_output_solutions/ (JSON).
 With --rerun-null-steps, scans structured_output_solutions/ for JSONs with null or empty step fields and re-runs vision + structured extraction for the corresponding PDFs in the same base folder.
 """
@@ -17,14 +17,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv()  # .env at repo root (run from repo root)
 
-_SCRIPT_DIR = Path(__file__).resolve().parent
-if _SCRIPT_DIR != Path.cwd():
-    sys.path.insert(0, str(_SCRIPT_DIR))
-
-from parsers.scoring_scale_vision import parse_scoring_scale_pdf
-from parsers.scoring_scale_to_structured import scoring_scale_md_to_structured
+from exam_parser.parsers.scoring_scale_vision import parse_scoring_scale_pdf
+from exam_parser.parsers.scoring_scale_to_structured import scoring_scale_md_to_structured
 
 VISION_SUBFOLDER = "vision_outputs_solutions"
 STRUCTURED_SUBFOLDER = "structured_output_solutions"

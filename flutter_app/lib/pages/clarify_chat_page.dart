@@ -7,6 +7,7 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:math_expressions/math_expressions.dart';
 
+import '../config/app_config.dart';
 import '../models/conversation_models.dart';
 import '../services/conversation_repository.dart';
 import '../widgets/conversation_sidebar.dart';
@@ -79,7 +80,7 @@ class _ExplicaTabState extends State<ExplicaTab> {
   int? _conversationId;
   bool _isLoadingHistory = false;
 
-  final String _apiUrl = 'http://localhost:8000/clarify/once-stream';
+  String get _apiUrl => '${AppConfig.apiBaseUrl}/clarify/once-stream';
 
   @override
   void dispose() {
@@ -596,7 +597,7 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
   int? _conversationId;
   bool _isLoadingHistory = false;
 
-  final String _apiUrl = 'http://localhost:8000/clarify/step-by-step-stream';
+  String get _apiUrl => '${AppConfig.apiBaseUrl}/clarify/step-by-step-stream';
 
   @override
   void dispose() {

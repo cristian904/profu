@@ -2,10 +2,10 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from dotenv import load_dotenv
 import logging
 
-from routers import clarify_once, clarify_with_steps, solve_problem
+from ai_backend.config import settings  # noqa: F401 - load .env via pydantic-settings
+from ai_backend.routers import clarify_once, clarify_with_steps, solve_problem
 
 # Configure logging
 logging.basicConfig(
@@ -13,9 +13,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
-
-# Load environment variables
-load_dotenv()
 
 app = FastAPI(
     title="Profu API",

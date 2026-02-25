@@ -4,6 +4,7 @@ Unit tests for the clarify routers (explica and guided_learning).
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from fastapi.testclient import TestClient
+from ai_backend.config import settings
 from ai_backend.main import app
 from ai_backend.routers.common import QueryRequest, Message, get_llm
 
@@ -132,17 +133,16 @@ class TestClarifyStepByStepEndpoint:
 
 class TestLLMIntegration:
     """Test LLM initialization and configuration."""
-    
-    @patch.dict('os.environ', {'GOOGLE_API_KEY': 'test_key'})
+
+    @patch.object(settings, "google_api_key", "test_key")
     def test_get_llm_with_api_key(self):
         """Test LLM initialization with API key."""
         llm = get_llm()
         assert llm is not None
-        # Check the model attribute - it returns with 'models/' prefix
         assert "gemini-2.0-flash" in llm.model
         assert llm.temperature == 0.0
-    
-    @patch.dict('os.environ', {}, clear=True)
+
+    @patch.object(settings, "google_api_key", "")
     def test_get_llm_without_api_key(self):
         """Test that get_llm raises error without API key."""
         with pytest.raises(ValueError, match="GOOGLE_API_KEY not found"):

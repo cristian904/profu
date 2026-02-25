@@ -15,27 +15,24 @@
 
 ### Backend Setup
 
-1. Navigate to the backend package directory:
+1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/) (Python package manager).
+
+2. From the **repo root**, install dependencies:
 ```bash
-cd backend/ai_backend
+uv sync
 ```
 
-2. Install dependencies:
-```bash
-poetry install
-```
-
-3. Create `.env` file and add your Google Gemini API key:
+3. Create `.env` at the **repo root** and add your Google Gemini API key (and any other keys you need):
 ```bash
 cp .env.example .env
-# Edit .env and add your GOOGLE_API_KEY
+# Edit .env and add GOOGLE_API_KEY, optional SUPABASE_* and DATABASE_URL
 ```
 
 Get your API key from: https://makersuite.google.com/app/apikey
 
-4. Run the backend server:
+4. Run the backend server (from repo root):
 ```bash
-poetry run uvicorn ai_backend.main:app --reload
+uv run uvicorn ai_backend.main:app --reload
 ```
 
 The backend will be available at `http://localhost:8000`
@@ -90,11 +87,9 @@ flutter run -d chrome
 
 #### Backend Tests
 ```bash
-cd backend
-cd ai_backend && poetry install --with dev && cd ..
-ai_backend/.venv/bin/python -m pytest
+uv sync
+uv run pytest backend/ai_backend/tests -v
 ```
-(On Windows: `ai_backend\.venv\Scripts\python.exe -m pytest`)
 
 Tests include:
 - API endpoint validation
