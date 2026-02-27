@@ -43,6 +43,7 @@ class ConversationSpeaker {
 class Conversation {
   final int id;
   final String userId;
+  final String? name;
   final String? title;
   final String? schoolSubject;
   final ConversationType type;
@@ -53,6 +54,7 @@ class Conversation {
     required this.userId,
     required this.type,
     required this.createdAt,
+    this.name,
     this.title,
     this.schoolSubject,
   });
@@ -61,6 +63,7 @@ class Conversation {
     return Conversation(
       id: json['id'] as int,
       userId: json['user_id'] as String,
+      name: json['name'] as String?,
       title: json['title'] as String?,
       schoolSubject: json['school_subject'] as String?,
       type: ConversationTypeDb.fromDb(json['type'] as String),
@@ -69,6 +72,7 @@ class Conversation {
   }
 
   Conversation copyWith({
+    String? name,
     String? title,
     String? schoolSubject,
     ConversationType? type,
@@ -76,6 +80,7 @@ class Conversation {
     return Conversation(
       id: id,
       userId: userId,
+      name: name ?? this.name,
       title: title ?? this.title,
       schoolSubject: schoolSubject ?? this.schoolSubject,
       type: type ?? this.type,
@@ -87,6 +92,7 @@ class Conversation {
     return <String, dynamic>{
       'id': id,
       'user_id': userId,
+      'name': name,
       'title': title,
       'school_subject': schoolSubject,
       'type': type.dbValue,

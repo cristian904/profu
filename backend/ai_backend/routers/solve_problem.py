@@ -2,7 +2,9 @@
 Solve Problem Router - Guided problem solving with image upload and OCR.
 Uses LangGraph to manage the conversation flow with intent detection and hint generation.
 """
-from fastapi import APIRouter, UploadFile, File, HTTPException, Request
+from uuid import UUID
+
+from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import StreamingResponse
 from typing import TypedDict, Annotated, Sequence
@@ -19,11 +21,23 @@ import logging
 from io import BytesIO
 
 from ai_backend.config import settings
-from .common import get_llm, Message, PROMPTS
+from .common import (
+    get_llm,
+    Message,
+    PROMPTS,
+    get_current_user_id,
+    get_solve_quota_count,
+    load_conversation_history_for_user,
+)
 
 # Set up logger
 logger = logging.getLogger(__name__)
 
+# Message shown when user exceeds monthly solve-problem quota
+QUOTA_LIMIT_MESSAGE = (
+    "Ai atins limita lunară de probleme pe care le poți rezolva cu Profu. "
+    "Revino luna viitoare pentru mai multe."
+)
 
 router = APIRouter(prefix="/solve-problem", tags=["solve_problem"])
 
@@ -42,7 +56,8 @@ class ProblemSolveRequest(BaseModel):
     """Request model for problem solving conversation"""
     query: str
     problem_text: str
-    history: list[Message] = []
+    history: list[Message] = []  # Optional; BE may load from DB instead
+    conversation_id: int | None = None  # Optional Supabase conversation id (preferred for history loading)
 
 
 class SuggestProblemRequest(BaseModel):
@@ -141,14 +156,27 @@ Dacă există grafice sau diagrame, descrie-le clar și precis."""
 
 @router.post("/upload")
 async def upload_problem_image(
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    user_id: UUID = Depends(get_current_user_id),
 ):
     """
     Upload an image of a problem and perform OCR.
     Returns the extracted problem text.
+    Requires Authorization: Bearer <Supabase JWT>. Enforces monthly solve quota before OCR.
     """
     logger.info(f"[UPLOAD] ===== Upload request received =====")
     logger.info(f"[UPLOAD] Filename: {file.filename}, Content-Type: {file.content_type}")
+    
+    # Auth and quota check before any file read or OCR
+    threshold = getattr(settings, "solve_monthly_quota_threshold", 0) or 0
+    if threshold > 0:
+        count = get_solve_quota_count(user_id)
+        if count >= threshold:
+            logger.info(f"[UPLOAD] Quota exceeded: user={user_id} count={count} threshold={threshold}")
+            raise HTTPException(
+                status_code=403,
+                detail=QUOTA_LIMIT_MESSAGE,
+            )
     
     try:
         # Read image bytes first (before validation, to ensure we can read it)
@@ -773,21 +801,58 @@ def build_problem_solving_graph():
 
 
 @router.post("/stream")
-async def solve_problem_stream(request: ProblemSolveRequest):
+async def solve_problem_stream(
+    request: ProblemSolveRequest,
+    user_id: UUID = Depends(get_current_user_id),
+):
     """
     Streaming endpoint for guided problem solving.
     Uses LangGraph to manage conversation flow with intent detection and hint generation.
+    Requires Authorization: Bearer <Supabase JWT>. Enforces monthly solve quota before running the graph.
     """
     logger.info(f"[STREAM] ===== Stream request received =====")
     logger.info(f"[STREAM] Query: {request.query[:50]}...")
     logger.info(f"[STREAM] Problem text length: {len(request.problem_text)}")
-    logger.info(f"[STREAM] History length: {len(request.history)}")
+    logger.info(f"[STREAM] History length (client): {len(request.history)}")
+    
+    # Auth and quota check before building state or running the graph
+    threshold = getattr(settings, "solve_monthly_quota_threshold", 0) or 0
+    if threshold > 0:
+        count = get_solve_quota_count(user_id)
+        if count > threshold:
+            logger.info(f"[STREAM] Quota exceeded: user={user_id} count={count} threshold={threshold}")
+
+            async def quota_limit_stream():
+                for char in QUOTA_LIMIT_MESSAGE:
+                    content = char.replace("\n", "\\n")
+                    yield f"data: {content}\n\n"
+                    await asyncio.sleep(0.01)
+                yield "data: [DONE]\n\n"
+
+            return StreamingResponse(
+                quota_limit_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
     
     async def generate():
         try:
             start_time = time.time()
             first_token_received = False
-            
+
+            # Prefer loading history from Supabase by conversation_id when provided,
+            # fall back to the history array from the client for backwards compatibility.
+            history = request.history
+            if request.conversation_id is not None:
+                loaded = load_conversation_history_for_user(user_id, request.conversation_id)
+                if loaded:
+                    history = loaded
+            logger.info("[STREAM] Effective history length: %d", len(history))
+
             logger.info("[STREAM] Building initial state...")
             # Build initial state
             initial_state: ProblemSolvingState = {
@@ -800,9 +865,9 @@ async def solve_problem_stream(request: ProblemSolveRequest):
             }
             
             # Build conversation history
-            if request.history:
-                logger.info(f"[STREAM] Adding {len(request.history)} messages from history")
-                for msg in request.history:
+            if history:
+                logger.info(f"[STREAM] Adding {len(history)} messages from history")
+                for msg in history:
                     if msg.role == "user":
                         initial_state["messages"].append(HumanMessage(content=msg.content))
                     elif msg.role == "assistant":

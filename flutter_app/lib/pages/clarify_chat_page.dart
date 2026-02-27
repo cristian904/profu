@@ -226,10 +226,16 @@ class _ExplicaTabState extends State<ExplicaTab> {
           });
         }
       }
+
+      // For new conversations (no id yet), send history so BE can answer.
+      // For existing conversations, let the backend load history from Supabase
+      // using conversation_id to avoid sending long histories over HTTP.
+      final useHistory = _conversationId == null;
       
       request.body = json.encode({
         'query': message,
-        'history': history,
+        'history': useHistory ? history : <Map<String, String>>[],
+        'conversation_id': _conversationId,
       });
 
       final streamedResponse = await request.send();
@@ -743,10 +749,16 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
           });
         }
       }
+
+      // For new conversations (no id yet), send history so BE can answer.
+      // For existing conversations, let the backend load history from Supabase
+      // using conversation_id to avoid sending long histories over HTTP.
+      final useHistory = _conversationId == null;
       
       request.body = json.encode({
         'query': message,
-        'history': history,
+        'history': useHistory ? history : <Map<String, String>>[],
+        'conversation_id': _conversationId,
       });
 
       final streamedResponse = await request.send();

@@ -126,6 +126,7 @@ An AI-assisted flow for students who have a concrete exam problem (usually on pa
 - The **conversation sidebar**:
   - Shows a list of past problem-solving sessions.
   - Lets students reopen an old problem and continue the discussion.
+  - When reopening, the app loads the **entire message history from the database** and sends it as context to the AI, so follow-up questions always see the full prior conversation (within model token limits).
   - Allows renaming conversation titles for easier navigation (e.g., “Integrals – variantă 2023”).
 
 #### Business Value
@@ -178,8 +179,9 @@ An AI-assisted flow for students who have a concrete exam problem (usually on pa
   - Students can:
     - Browse past conversations per mode.
     - Click to load the full message history into the current chat.
-    - Edit conversation titles directly from the sidebar
-      (updates the `title` column in Supabase).
+    - Edit conversation titles directly from the sidebar:
+      - Custom titles are stored in the `name` column in Supabase.
+      - When `name` is empty, the app falls back to the first message/title for display.
 
 - **When conversations are created & saved:**
   - **Clarify Once / Step-by-Step:**

@@ -1,5 +1,10 @@
 README.md
+__init__.py
+index_exam_problems_to_documents.py
+load_merged_to_db.py
 pyproject.toml
+run.py
+run_solutions.py
 ./__init__.py
 ./index_exam_problems_to_documents.py
 ./load_merged_to_db.py
@@ -16,3 +21,9 @@ exam_parser.egg-info/SOURCES.txt
 exam_parser.egg-info/dependency_links.txt
 exam_parser.egg-info/requires.txt
 exam_parser.egg-info/top_level.txt
+parsers/__init__.py
+parsers/difficulty_rules.py
+parsers/gemini_vision_parser.py
+parsers/scoring_scale_to_structured.py
+parsers/scoring_scale_vision.py
+parsers/vision_to_structured.py

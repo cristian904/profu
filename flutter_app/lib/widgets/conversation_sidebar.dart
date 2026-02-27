@@ -37,7 +37,10 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
   }
 
   Future<void> _editTitle(BuildContext context, Conversation conversation) async {
-    final controller = TextEditingController(text: conversation.title ?? '');
+    final controller = TextEditingController(
+      // Prefer custom name when present; fall back to auto title.
+      text: conversation.name ?? conversation.title ?? '',
+    );
 
     final newTitle = await showDialog<String?>(
       context: context,
@@ -70,7 +73,8 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
     try {
       final updated = await _repository.updateConversationTitle(
         conversationId: conversation.id,
-        title: newTitle.isEmpty ? conversation.title ?? '' : newTitle,
+        // Empty string clears the custom name (handled in repository).
+        title: newTitle,
       );
 
       // Update selected conversation in parent if needed
@@ -170,9 +174,11 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                     final isSelected =
                         widget.selectedConversation?.id == conv.id;
 
-                    final title = (conv.title?.trim().isNotEmpty ?? false)
-                        ? conv.title!.trim()
-                        : 'Conversație din ${_formatDate(conv.createdAt)}';
+                    final displayTitle = (conv.name?.trim().isNotEmpty ?? false)
+                        ? conv.name!.trim()
+                        : (conv.title?.trim().isNotEmpty ?? false)
+                            ? conv.title!.trim()
+                            : 'Conversație din ${_formatDate(conv.createdAt)}';
 
                     return ListTile(
                       contentPadding:
@@ -182,7 +188,7 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                       selectedTileColor:
                           theme.colorScheme.primary.withOpacity(0.15),
                       title: Text(
-                        title,
+                        displayTitle,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),

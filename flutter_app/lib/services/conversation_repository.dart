@@ -90,6 +90,8 @@ class ConversationRepository {
         'type': type.dbValue,
         'title': title,
         'school_subject': schoolSubject,
+        // `name` is reserved for optional user-defined title set via rename.
+        // For new conversations we keep it null so UI falls back to first message/title.
       }).select().single();
 
       return Conversation.fromJson(response as Map<String, dynamic>);
@@ -128,9 +130,13 @@ class ConversationRepository {
     required int conversationId,
     required String title,
   }) async {
+    // Treat empty/whitespace-only titles as clearing the custom name (store NULL).
+    final normalizedTitle = title.trim().isEmpty ? null : title.trim();
+
     final response = await _client
         .from('conversations')
-        .update({'title': title})
+        // Store user-defined titles in `name`. Null means "no custom name".
+        .update({'name': normalizedTitle})
         .eq('id', conversationId)
         .select()
         .single();

@@ -2,21 +2,32 @@
 Clarify Once Router - Direct answer mode for "N-am înțeles la clasă" feature.
 Provides streaming chat interface where AI answers questions directly with full knowledge.
 """
-from fastapi import APIRouter
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 import asyncio
 import time
 import json
 
-from .common import get_llm, QueryRequest, PROMPTS
+from .common import (
+    get_llm,
+    QueryRequest,
+    PROMPTS,
+    get_current_user_id,
+    load_conversation_history_for_user,
+)
 
 
 router = APIRouter(prefix="/clarify", tags=["clarify_once"])
 
 
 @router.post("/once-stream")
-async def clarify_once_stream(request: QueryRequest):
+async def clarify_once_stream(
+    request: QueryRequest,
+    user_id: UUID = Depends(get_current_user_id),
+):
     """
     Streaming endpoint for direct answers to student questions.
     Uses Gemini 2.0 Flash with LangChain for token streaming.
@@ -36,15 +47,23 @@ async def clarify_once_stream(request: QueryRequest):
                 return
             
             llm = get_llm()
-            
+
             # Get system prompt from YAML configuration
             system_prompt = PROMPTS['clarify_chat']['system_prompt']
 
             # Build message history for conversation context
             messages = [SystemMessage(content=system_prompt)]
-            
+
+            # Prefer loading history from Supabase by conversation_id when provided,
+            # fall back to the history array from the client for backwards compatibility.
+            history = request.history
+            if request.conversation_id is not None:
+                loaded = load_conversation_history_for_user(user_id, request.conversation_id)
+                if loaded:
+                    history = loaded
+
             # Add conversation history (filter out empty messages)
-            for msg in request.history:
+            for msg in history:
                 if msg.content and msg.content.strip():  # Only add non-empty messages
                     if msg.role == "user":
                         messages.append(HumanMessage(content=msg.content))

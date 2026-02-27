@@ -16,6 +16,7 @@ Requires-Dist: pillow>=11.0.0
 Requires-Dist: pydantic>=2.0.0
 Requires-Dist: pydantic-settings>=2.0.0
 Requires-Dist: supabase>=2.0.0
+Requires-Dist: pyjwt>=2.8.0
 Provides-Extra: dev
 Requires-Dist: pytest>=8.0.0; extra == "dev"
 Requires-Dist: pytest-asyncio>=0.23.0; extra == "dev"
