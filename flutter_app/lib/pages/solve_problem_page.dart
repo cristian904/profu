@@ -12,6 +12,8 @@ import 'package:math_expressions/math_expressions.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:async' show Timer, TimeoutException;
 
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../config/app_config.dart';
 import '../models/conversation_models.dart';
 import '../services/conversation_repository.dart';
@@ -91,7 +93,10 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
       _isLoadingHistory = true;
       _isStreaming = false;
     });
-
+    // Clear any previously inferred problem text; we will try to reconstruct it
+    // from the loaded assistant messages.
+    _problemText = null;
+    
     try {
       final messages = await _conversationRepository.listMessages(
         conversationId: conversation.id,
@@ -102,18 +107,48 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
       setState(() {
         _messages
           ..clear()
-          ..addAll(
-            messages.map(
-              (m) => ChatMessage(
-                text: m.content ?? '',
-                isUser: m.speaker == ConversationSpeaker.user,
-                timestamp: m.createdAt,
-              ),
+          ..addAll(messages.map(
+            (m) => ChatMessage(
+              text: m.content ?? '',
+              isUser: m.speaker == ConversationSpeaker.user,
+              timestamp: m.createdAt,
             ),
-          );
+          ));
         _activeConversation = conversation;
         _conversationId = conversation.id;
       });
+      
+      // Try to reconstruct the original problem text from the first assistant
+      // message that follows the upload OCR pattern:
+      // "Pare o problemă interesantă!\n\n**Problema:**\n{problem_text}"
+      final firstAssistantMessage = messages.firstWhere(
+        (m) =>
+            m.speaker == ConversationSpeaker.assistant &&
+            (m.content ?? '').contains('Pare o problemă interesantă!'),
+        orElse: () => ConversationMessage(
+          id: -1,
+          conversationId: conversation.id,
+          speaker: ConversationSpeaker.assistant,
+          content: null,
+          createdAt: DateTime.now(),
+        ),
+      );
+      final content = firstAssistantMessage.content ?? '';
+      if (content.isNotEmpty) {
+        const marker = '**Problema:**';
+        final markerIndex = content.indexOf(marker);
+        if (markerIndex != -1) {
+          final afterMarker = content.substring(markerIndex + marker.length);
+          // Trim leading colon/newlines/spaces
+          final normalized = afterMarker.replaceFirst(RegExp(r'^[\s:]*'), '');
+          if (normalized.isNotEmpty) {
+            setState(() {
+              _problemText = normalized.trim();
+            });
+          }
+        }
+      }
+      
       _scrollToBottom();
     } finally {
       if (!mounted) return;
@@ -174,6 +209,10 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
       // Create multipart request
       debugPrint('[FE UPLOAD] Creating multipart request to: $_uploadUrl');
       var request = http.MultipartRequest('POST', Uri.parse(_uploadUrl));
+      final accessTokenPath = Supabase.instance.client.auth.currentSession?.accessToken;
+      if (accessTokenPath != null) {
+        request.headers['Authorization'] = 'Bearer $accessTokenPath';
+      }
       request.files.add(
         await http.MultipartFile.fromPath('file', imageFile.path),
       );
@@ -232,7 +271,11 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
       // Create multipart request
       debugPrint('[FE UPLOAD] Creating multipart request to: $_uploadUrl');
       var request = http.MultipartRequest('POST', Uri.parse(_uploadUrl));
-      
+      final accessToken = Supabase.instance.client.auth.currentSession?.accessToken;
+      if (accessToken != null) {
+        request.headers['Authorization'] = 'Bearer $accessToken';
+      }
+
       // Add file - content-type will be inferred from filename by the http package
       // The backend will also check file extension if content-type is missing
       request.files.add(
@@ -314,9 +357,21 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
       setState(() {
         _isStreaming = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Eroare la procesarea imaginii: ${response.statusCode}')),
-      );
+      String message = 'Eroare la procesarea imaginii: ${response.statusCode}';
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        try {
+          final data = json.decode(response.body) as Map<String, dynamic>?;
+          final detail = data?['detail'];
+          if (detail != null) {
+            message = detail is String ? detail : detail.toString();
+          }
+        } catch (_) {}
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+      }
     }
   }
 
@@ -376,6 +431,10 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
     try {
       final request = http.Request('POST', Uri.parse('$_apiUrl/stream'));
       request.headers['Content-Type'] = 'application/json';
+      final accessToken = Supabase.instance.client.auth.currentSession?.accessToken;
+      if (accessToken != null) {
+        request.headers['Authorization'] = 'Bearer $accessToken';
+      }
 
       // Build conversation history
       final history = <Map<String, String>>[];
@@ -389,10 +448,16 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
         }
       }
 
+      // For new conversations (no id yet), send history so BE can answer.
+      // For existing conversations, let the backend load history from Supabase
+      // using conversation_id to avoid sending long histories over HTTP.
+      final useHistory = _conversationId == null;
+
       request.body = json.encode({
         'query': message,
         'problem_text': _problemText,
-        'history': history,
+        'history': useHistory ? history : <Map<String, String>>[],
+        'conversation_id': _conversationId,
       });
 
       final streamedResponse = await request.send();
@@ -736,6 +801,10 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
     try {
       final request = http.Request('POST', Uri.parse('$_apiUrl/stream'));
       request.headers['Content-Type'] = 'application/json';
+      final accessToken = Supabase.instance.client.auth.currentSession?.accessToken;
+      if (accessToken != null) {
+        request.headers['Authorization'] = 'Bearer $accessToken';
+      }
       final history = <Map<String, String>>[];
       for (int i = 0; i < _messages.length - 1; i++) {
         final msg = _messages[i];
@@ -746,10 +815,17 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
           });
         }
       }
+
+      // For new conversations (no id yet), send history so BE can answer.
+      // For existing conversations, let the backend load history from Supabase
+      // using conversation_id to avoid sending long histories over HTTP.
+      final useHistory = _conversationId == null;
+
       request.body = json.encode({
         'query': query,
         'problem_text': problemText,
-        'history': history,
+        'history': useHistory ? history : <Map<String, String>>[],
+        'conversation_id': _conversationId,
       });
 
       final streamedResponse = await request.send();

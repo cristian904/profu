@@ -24,18 +24,22 @@ Python module that downloads bacalaureat M1 PDFs (enunturi + rezolvari) from [va
 
 ## Setup
 
-From this directory:
+From the **repo root**:
 
 ```bash
-poetry install
+uv sync
 ```
 
 ## Run
 
-From this directory:
+From the **repo root**:
 
 ```bash
-poetry run python main.py
+# Hei Profu crawler (exam PDFs from heiprofu.ro)
+uv run python -m crawler.crawl_heiprofu
+
+# Variant 2009 crawler (variante-mate.ro)
+uv run python -m crawler.crawler_var_2009
 ```
 
-The script crawls variants 1–100, extracts the 6 links per page, resolves each to a PDF (direct or from HTML), and downloads them with a short delay between requests.
+Other scripts: `uv run python -m crawler.list_downloads`, `uv run python -m crawler.match_exam_solutions`, `uv run python -m crawler.move_jsons_to_structured_output` (run from repo root with the same pattern).

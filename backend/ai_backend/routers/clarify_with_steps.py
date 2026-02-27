@@ -2,7 +2,9 @@
 Clarify Step by Step Router - Step-by-step interactive learning mode.
 Uses LangGraph to guide students through prerequisites before explaining the main concept.
 """
-from fastapi import APIRouter
+from uuid import UUID
+
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from typing import TypedDict, Annotated, Sequence
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
@@ -13,7 +15,13 @@ import time
 import json
 import re
 
-from .common import get_llm, QueryRequest, PROMPTS
+from .common import (
+    get_llm,
+    QueryRequest,
+    PROMPTS,
+    get_current_user_id,
+    load_conversation_history_for_user,
+)
 
 
 router = APIRouter(prefix="/clarify", tags=["clarify_step_by_step"])
@@ -236,7 +244,10 @@ def build_step_by_step_learning_graph():
 
 
 @router.post("/step-by-step-stream")
-async def clarify_step_by_step_stream(request: QueryRequest):
+async def clarify_step_by_step_stream(
+    request: QueryRequest,
+    user_id: UUID = Depends(get_current_user_id),
+):
     """
     Streaming endpoint for step-by-step guided learning.
     Uses LangGraph to guide students through prerequisites before explaining the main concept.
@@ -251,14 +262,22 @@ async def clarify_step_by_step_stream(request: QueryRequest):
         try:
             start_time = time.time()
             first_token_received = False
-            
-            # Check if this is the initial query (no history) or a follow-up
-            is_initial_query = len(request.history) == 0
+
+            # Prefer loading history from Supabase by conversation_id when provided,
+            # fall back to the history array from the client for backwards compatibility.
+            history = request.history
+            if request.conversation_id is not None:
+                loaded = load_conversation_history_for_user(user_id, request.conversation_id)
+                if loaded:
+                    history = loaded
+
+            # Check if this is the initial query (no prior messages) or a follow-up
+            is_initial_query = len(history) == 0
             
             if is_initial_query:
                 # Initial query: Run the full graph starting with prerequisite generation
                 graph = build_step_by_step_learning_graph()
-                
+
                 initial_state: StepByStepLearningState = {
                     "messages": [],
                     "original_query": request.query,
@@ -290,13 +309,13 @@ async def clarify_step_by_step_stream(request: QueryRequest):
                 # Follow-up query: Continue the conversation with question_asker logic
                 # We need to rebuild state from history
                 llm = get_llm()
-                
+
                 # Build message history
                 system_prompt = PROMPTS['guided_learning']['question_asker']['system_prompt']
                 messages = [SystemMessage(content=system_prompt)]
-                
+
                 # Add conversation history
-                for msg in request.history:
+                for msg in history:
                     if msg.role == "user":
                         messages.append(HumanMessage(content=msg.content))
                     elif msg.role == "assistant":

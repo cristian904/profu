@@ -1,4 +1,10 @@
 README.md
+__init__.py
+crawl_heiprofu.py
+crawler_var_2009.py
+list_downloads.py
+match_exam_solutions.py
+move_jsons_to_structured_output.py
 pyproject.toml
 ./__init__.py
 ./crawl_heiprofu.py

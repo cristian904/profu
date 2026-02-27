@@ -2,6 +2,7 @@
 Application settings loaded from environment and .env (repo root).
 Uses pydantic-settings; .env is loaded from current working directory (run from repo root).
 """
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,10 +21,21 @@ class Settings(BaseSettings):
     # Optional: PostgreSQL async URL for future use
     database_url: str = ""
 
-    # Optional: Supabase for /solve-problem/suggest-problem (vector search)
+    # Optional: Supabase for /solve-problem/suggest-problem (vector search) and quota
     supabase_url: str = ""
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
+    supabase_jwt_secret: str = ""
+
+    @field_validator("supabase_jwt_secret", mode="before")
+    @classmethod
+    def strip_jwt_secret(cls, v: str) -> str:
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
+    # Solve-problem monthly quota (count from account creation); 0 = disabled
+    solve_monthly_quota_threshold: int = 0
 
     @property
     def supabase_key(self) -> str:
