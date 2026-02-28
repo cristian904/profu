@@ -92,6 +92,49 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
     }
   }
 
+  Future<void> _deleteConversation(BuildContext context, Conversation conv) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Șterge conversația'),
+          content: const Text(
+            'Sigur că vrei să ștergi această conversație?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Anulează'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(
+                foregroundColor: Theme.of(context).colorScheme.error,
+              ),
+              child: const Text('Șterge'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await _repository.deleteConversation(conversationId: conv.id);
+      if (widget.selectedConversation?.id == conv.id) {
+        widget.onConversationSelected(null);
+      }
+      _reload();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Nu am putut șterge conversația: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -198,10 +241,21 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                           color: theme.colorScheme.onSurface.withOpacity(0.6),
                         ),
                       ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.edit, size: 18),
-                        tooltip: 'Editează titlul',
-                        onPressed: () => _editTitle(context, conv),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, size: 18),
+                            tooltip: 'Editează titlul',
+                            onPressed: () => _editTitle(context, conv),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.delete_outline, size: 18,
+                                color: theme.colorScheme.error),
+                            tooltip: 'Șterge conversația',
+                            onPressed: () => _deleteConversation(context, conv),
+                          ),
+                        ],
                       ),
                       onTap: () => widget.onConversationSelected(conv),
                     );

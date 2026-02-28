@@ -1,6 +1,7 @@
 """
 Common utilities and models shared between clarify and solve routers.
 """
+import json
 import logging
 from pathlib import Path
 from uuid import UUID
@@ -55,7 +56,35 @@ def get_user_id_from_request(request: Request) -> UUID:
     Extract and verify Supabase JWT from Authorization header; return user UUID (sub).
     Raises HTTPException 401 if missing or invalid.
     """
+    # #region agent log
+    _log_path = Path(__file__).resolve().parent.parent.parent / "debug-ffbdb6.log"
     auth = request.headers.get("Authorization")
+    _has = auth is not None and len(auth) > 0
+    _bearer = auth.startswith("Bearer ") if auth else False
+    _len = len(auth) if auth else 0
+    try:
+        with open(_log_path, "a", encoding="utf-8") as _f:
+            _f.write(
+                json.dumps(
+                    {
+                        "sessionId": "ffbdb6",
+                        "location": "common.py:get_user_id_from_request",
+                        "message": "Auth header check",
+                        "data": {
+                            "path": str(getattr(request, "scope", {}).get("path", "")),
+                            "has_authorization": _has,
+                            "starts_with_bearer": _bearer,
+                            "auth_value_len": _len,
+                        },
+                        "timestamp": __import__("time").time() * 1000,
+                        "hypothesisId": "A",
+                    }
+                )
+                + "\n"
+            )
+    except Exception:
+        pass
+    # #endregion
     if not auth or not auth.startswith("Bearer "):
         logger.info("[AUTH] 401: Missing or invalid Authorization header")
         raise HTTPException(

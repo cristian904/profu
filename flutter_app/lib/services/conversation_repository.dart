@@ -144,6 +144,13 @@ class ConversationRepository {
     return Conversation.fromJson(response as Map<String, dynamic>);
   }
 
+  Future<void> deleteConversation({required int conversationId}) async {
+    await _client
+        .from('conversations')
+        .delete()
+        .eq('id', conversationId);
+  }
+
   Future<ConversationMessage> createMessage({
     required int conversationId,
     required String speaker,
