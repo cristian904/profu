@@ -7,6 +7,8 @@ import 'package:markdown/markdown.dart' as md;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:math_expressions/math_expressions.dart';
 
+import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../config/app_config.dart';
 import '../models/conversation_models.dart';
 import '../services/conversation_repository.dart';
@@ -214,7 +216,11 @@ class _ExplicaTabState extends State<ExplicaTab> {
     try {
       final request = http.Request('POST', Uri.parse(_apiUrl));
       request.headers['Content-Type'] = 'application/json';
-      
+      final accessToken = Supabase.instance.client.auth.currentSession?.accessToken;
+      if (accessToken != null) {
+        request.headers['Authorization'] = 'Bearer $accessToken';
+      }
+
       // Build conversation history (exclude the placeholder AI message we just added)
       final history = <Map<String, String>>[];
       for (int i = 0; i < _messages.length - 1; i++) {
@@ -737,7 +743,11 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
     try {
       final request = http.Request('POST', Uri.parse(_apiUrl));
       request.headers['Content-Type'] = 'application/json';
-      
+      final accessToken = Supabase.instance.client.auth.currentSession?.accessToken;
+      if (accessToken != null) {
+        request.headers['Authorization'] = 'Bearer $accessToken';
+      }
+
       // Build conversation history (exclude the placeholder AI message we just added)
       final history = <Map<String, String>>[];
       for (int i = 0; i < _messages.length - 1; i++) {
