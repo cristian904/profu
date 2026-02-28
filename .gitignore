@@ -14,11 +14,10 @@ pip-delete-this-directory.txt
 latex_preview/
 supabase/
 
-# Environment variables
+# Environment variables (all .env files everywhere)
 .env
 *.env
-# Allow Flutter app default .env (safe placeholders) so the app builds
-flutter_app/.env
+**/.env
 
 # IDE
 .vscode/
