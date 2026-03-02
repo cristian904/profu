@@ -24,6 +24,9 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
 
   late Future<List<Conversation>> _futureConversations;
 
+  /// When false, only the last 5 (most recent) conversations are shown.
+  bool _showAllConversations = false;
+
   @override
   void initState() {
     super.initState();
@@ -210,10 +213,61 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                   );
                 }
 
+                const int maxInitial = 5;
+                final displayList = _showAllConversations || conversations.length <= maxInitial
+                    ? conversations
+                    : conversations.take(maxInitial).toList();
+                final hasMore = conversations.length > maxInitial && !_showAllConversations;
+                final itemCount = displayList.length + (hasMore ? 1 : 0);
+
                 return ListView.builder(
-                  itemCount: conversations.length,
+                  itemCount: itemCount,
                   itemBuilder: (context, index) {
-                    final conv = conversations[index];
+                    if (hasMore && index == displayList.length) {
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => setState(() => _showAllConversations = true),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: theme.colorScheme.primary.withOpacity(0.6),
+                                  width: 1,
+                                ),
+                                color: theme.colorScheme.primaryContainer.withOpacity(0.4),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.expand_more,
+                                    size: 16,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Vezi mai multe',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    final conv = displayList[index];
                     final isSelected =
                         widget.selectedConversation?.id == conv.id;
 
@@ -236,7 +290,7 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       subtitle: Text(
-                        _formatTime(conv.createdAt),
+                        _formatDateTime(conv.createdAt),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurface.withOpacity(0.6),
                         ),
@@ -277,6 +331,10 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
     final h = dt.hour.toString().padLeft(2, '0');
     final m = dt.minute.toString().padLeft(2, '0');
     return '$h:$m';
+  }
+
+  String _formatDateTime(DateTime dt) {
+    return '${_formatDate(dt)}, ${_formatTime(dt)}';
   }
 }
 
