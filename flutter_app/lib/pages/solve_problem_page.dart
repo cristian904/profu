@@ -28,6 +28,8 @@ class SolveProblemPage extends StatefulWidget {
 }
 
 class _SolveProblemPageState extends State<SolveProblemPage> {
+  static const _solutionChoiceButtons = ['Vreau rezolvarea completa', 'Hint'];
+
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
@@ -349,6 +351,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
           isUser: false,
           timestamp: DateTime.now(),
           isStreaming: false,
+          // No solutionChoiceButtons here: this message shows "Vreau probleme similiare" / "Vreau sa o rezolv" only
         ));
       });
 
@@ -473,6 +476,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
             if (mounted && aiMessageIndex < _messages.length) {
               setState(() {
                 _messages[aiMessageIndex].isStreaming = false;
+                _messages[aiMessageIndex].solutionChoiceButtons = _solutionChoiceButtons;
                 _isStreaming = false;
               });
             }
@@ -499,6 +503,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                     if (aiMessageIndex < _messages.length) {
                       setState(() {
                         _messages[aiMessageIndex].isStreaming = false;
+                        _messages[aiMessageIndex].solutionChoiceButtons = _solutionChoiceButtons;
                         _isStreaming = false;
                       });
 
@@ -573,6 +578,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
               // Modify properties directly (same as working clarify_chat_page.dart)
               setState(() {
                 _messages[aiMessageIndex].isStreaming = false;
+                _messages[aiMessageIndex].solutionChoiceButtons = _solutionChoiceButtons;
                 _isStreaming = false;
               });
             } else {
@@ -587,6 +593,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
           setState(() {
             _messages[aiMessageIndex].text = 'Eroare: Nu am putut obține răspuns de la server.';
             _messages[aiMessageIndex].isStreaming = false;
+            _messages[aiMessageIndex].solutionChoiceButtons = _solutionChoiceButtons;
             _isStreaming = false;
           });
         } else {
@@ -600,6 +607,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
         setState(() {
           _messages[aiMessageIndex].text = 'Eroare de conexiune: $e';
           _messages[aiMessageIndex].isStreaming = false;
+          _messages[aiMessageIndex].solutionChoiceButtons = _solutionChoiceButtons;
           _isStreaming = false;
         });
       } else {
@@ -694,7 +702,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
         isUser: false,
         timestamp: DateTime.now(),
         isStreaming: false,
-        solutionChoiceButtons: ['Rezolvare completă', 'Hint'],
+        solutionChoiceButtons: _solutionChoiceButtons,
       ));
     });
 
@@ -735,7 +743,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
         isUser: false,
         timestamp: DateTime.now(),
         isStreaming: false,
-        solutionChoiceButtons: ['Rezolvare completă', 'Hint'],
+        solutionChoiceButtons: _solutionChoiceButtons,
       ));
     });
 
@@ -841,6 +849,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
             _messages[aiMessageIndex].text =
                 'Eroare: Nu am putut obține răspuns de la server.';
             _messages[aiMessageIndex].isStreaming = false;
+            _messages[aiMessageIndex].solutionChoiceButtons = _solutionChoiceButtons;
             _isStreaming = false;
           });
         } else {
@@ -855,6 +864,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
         if (mounted && aiMessageIndex < _messages.length) {
           setState(() {
             _messages[aiMessageIndex].isStreaming = false;
+            _messages[aiMessageIndex].solutionChoiceButtons = _solutionChoiceButtons;
             _isStreaming = false;
           });
         }
@@ -875,6 +885,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
               if (mounted && aiMessageIndex < _messages.length) {
                 setState(() {
                   _messages[aiMessageIndex].isStreaming = false;
+                  _messages[aiMessageIndex].solutionChoiceButtons = _solutionChoiceButtons;
                   _isStreaming = false;
                 });
                 final fullText = accumulatedText;
@@ -933,6 +944,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
         setState(() {
           _messages[aiMessageIndex].text = 'Eroare de conexiune: $e';
           _messages[aiMessageIndex].isStreaming = false;
+          _messages[aiMessageIndex].solutionChoiceButtons = _solutionChoiceButtons;
           _isStreaming = false;
         });
       } else if (mounted) {
@@ -942,6 +954,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
       if (mounted && aiMessageIndex < _messages.length) {
         setState(() {
           _messages[aiMessageIndex].isStreaming = false;
+          _messages[aiMessageIndex].solutionChoiceButtons = _solutionChoiceButtons;
           _isStreaming = false;
         });
       }
