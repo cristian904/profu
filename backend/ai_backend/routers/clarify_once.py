@@ -13,6 +13,7 @@ import json
 
 from .common import (
     get_llm,
+    get_supabase_client,
     QueryRequest,
     PROMPTS,
     get_current_user_id,
@@ -27,6 +28,8 @@ router = APIRouter(prefix="/clarify", tags=["clarify_once"])
 async def clarify_once_stream(
     request: QueryRequest,
     user_id: UUID = Depends(get_current_user_id),
+    llm=Depends(get_llm),
+    supabase=Depends(get_supabase_client),
 ):
     """
     Streaming endpoint for direct answers to student questions.
@@ -45,8 +48,6 @@ async def clarify_once_stream(
                 yield f"data: Eroare: Întrebarea nu poate fi goală.\n\n"
                 yield "data: [DONE]\n\n"
                 return
-            
-            llm = get_llm()
 
             # Get system prompt from YAML configuration
             system_prompt = PROMPTS['clarify_chat']['system_prompt']
@@ -58,7 +59,7 @@ async def clarify_once_stream(
             # fall back to the history array from the client for backwards compatibility.
             history = request.history
             if request.conversation_id is not None:
-                loaded = load_conversation_history_for_user(user_id, request.conversation_id)
+                loaded = load_conversation_history_for_user(user_id, request.conversation_id, supabase)
                 if loaded:
                     history = loaded
 

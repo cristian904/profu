@@ -536,6 +536,12 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                   } catch (e) {
                     // Ignore metadata parsing errors
                   }
+                } else if (data == '[THINKING]') {
+                  if (mounted && aiMessageIndex < _messages.length) {
+                    setState(() {
+                      _messages[aiMessageIndex].text = 'Se gândește...';
+                    });
+                  }
                 } else if (data.isNotEmpty) {
                   // Unescape newlines from SSE format
                   final unescapedData = data.replaceAll('\\n', '\n');
@@ -898,6 +904,12 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                   });
                 }
               } catch (_) {}
+            } else if (data == '[THINKING]') {
+              if (mounted && aiMessageIndex < _messages.length) {
+                setState(() {
+                  _messages[aiMessageIndex].text = 'Se gândește...';
+                });
+              }
             } else if (data.isNotEmpty) {
               final unescapedData = data.replaceAll('\\n', '\n');
               accumulatedText += unescapedData;

@@ -4,9 +4,11 @@ Common utilities and models shared between clarify and solve routers.
 import json
 import logging
 from pathlib import Path
+from typing import Any, Optional
 from uuid import UUID
 
 import yaml
+from supabase import create_client
 import jwt
 from jwt import PyJWKClient
 from fastapi import Request, HTTPException, status
@@ -21,14 +23,41 @@ logger = logging.getLogger(__name__)
 _jwks_client: PyJWKClient | None = None
 
 
+def ensure_jwks_prefetch() -> None:
+    """
+    Create the global JWKS client and prefetch keys at startup so the first
+    RS256/ES256 request does not pay the JWKS fetch latency.
+    No-op if Supabase URL is not set or auth is not configured.
+    """
+    global _jwks_client
+    if _jwks_client is not None:
+        return
+    if not settings.supabase_jwt_secret or not settings.supabase_url:
+        return
+    jwks_url = settings.supabase_url.rstrip("/") + "/auth/v1/.well-known/jwks.json"
+    try:
+        _jwks_client = PyJWKClient(jwks_url)
+        # Prefetch and cache the key set so first user request doesn't fetch
+        if hasattr(_jwks_client, "get_signing_keys"):
+            _jwks_client.get_signing_keys(refresh=True)
+        logger.info("[AUTH] JWKS prefetched from %s", jwks_url)
+    except Exception as e:
+        logger.warning("[AUTH] JWKS prefetch failed (first request will fetch): %s", e)
+        if _jwks_client is None:
+            try:
+                _jwks_client = PyJWKClient(jwks_url)
+            except Exception:
+                pass  # first request will create and fetch
+
+
 # Load prompts from YAML file
 prompts_path = Path(__file__).parent.parent / "prompts.yaml"
 with open(prompts_path, 'r', encoding='utf-8') as f:
     PROMPTS = yaml.safe_load(f)
 
 
-def get_llm():
-    """Initialize and return Gemini LLM instance (model from config)."""
+def get_llm() -> ChatGoogleGenerativeAI:
+    """Initialize and return Gemini LLM instance (model from config). Use with FastAPI Depends(get_llm) for dependency injection."""
     if not settings.google_api_key:
         raise ValueError("GOOGLE_API_KEY not found in environment variables")
     return ChatGoogleGenerativeAI(
@@ -191,17 +220,26 @@ def get_current_user_id(request: Request) -> UUID:
     return get_user_id_from_request(request)
 
 
-def get_solve_quota_count(user_id: UUID) -> int:
+def get_supabase_client() -> Optional[Any]:
+    """
+    FastAPI dependency: returns Supabase client, or None if URL/key not configured.
+    Use with Depends(get_supabase_client) in route signatures.
+    """
+    if not settings.supabase_url or not settings.supabase_key:
+        return None
+    return create_client(settings.supabase_url, settings.supabase_key)
+
+
+def get_solve_quota_count(user_id: UUID, supabase_client: Optional[Any] = None) -> int:
     """
     Return the number of solve (problem_solving) conversations for the user in the current month
     (month defined from account creation). Uses Supabase RPC get_solve_conversations_count_current_month.
+    Pass the result of Depends(get_supabase_client) as supabase_client.
     """
-    if not settings.supabase_url or not settings.supabase_key:
+    if supabase_client is None:
         return 0
     try:
-        from supabase import create_client
-        client = create_client(settings.supabase_url, settings.supabase_key)
-        r = client.rpc(
+        r = supabase_client.rpc(
             "get_solve_conversations_count_current_month",
             {"p_user_id": str(user_id)},
         ).execute()
@@ -215,22 +253,21 @@ def get_solve_quota_count(user_id: UUID) -> int:
         return 0
 
 
-def load_conversation_history_for_user(user_id: UUID, conversation_id: int) -> list[Message]:
+def load_conversation_history_for_user(
+    user_id: UUID, conversation_id: int, supabase_client: Optional[Any] = None
+) -> list[Message]:
     """
     Load full conversation history for a given user and conversation_id from Supabase.
     Ensures the conversation belongs to the user before returning any messages.
+    Pass the result of Depends(get_supabase_client) as supabase_client.
     """
-    if not settings.supabase_url or not settings.supabase_key:
+    if supabase_client is None:
         return []
 
     try:
-        from supabase import create_client
-
-        client = create_client(settings.supabase_url, settings.supabase_key)
-
         # Verify that the conversation belongs to this user (UUID as string)
         conv_resp = (
-            client.table("conversations")
+            supabase_client.table("conversations")
             .select("id,user_id")
             .eq("id", conversation_id)
             .limit(1)
@@ -246,7 +283,7 @@ def load_conversation_history_for_user(user_id: UUID, conversation_id: int) -> l
 
         # Fetch all messages ordered by created_at ascending
         msg_resp = (
-            client.table("conversation_messages")
+            supabase_client.table("conversation_messages")
             .select("speaker,content,created_at")
             .eq("conversation_id", conversation_id)
             .order("created_at", desc=False)

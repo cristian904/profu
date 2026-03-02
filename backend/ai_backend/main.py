@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
@@ -6,6 +7,7 @@ import logging
 
 from ai_backend.config import settings  # noqa: F401 - load .env via pydantic-settings
 from ai_backend.routers import clarify_once, clarify_with_steps, solve_problem
+from ai_backend.routers.common import ensure_jwks_prefetch
 
 # Configure logging
 logging.basicConfig(
@@ -14,10 +16,19 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Prefetch JWKS at startup so first RS256/ES256 request doesn't pay fetch cost
+    ensure_jwks_prefetch()
+    yield
+
+
 app = FastAPI(
     title="Profu API",
     version="1.0.0",
-    description="AI-Powered Bacalaureat Preparation Assistant"
+    description="AI-Powered Bacalaureat Preparation Assistant",
+    lifespan=lifespan,
 )
 
 # Add exception handler for validation errors (422 = Unprocessable Entity, standard for body validation)
