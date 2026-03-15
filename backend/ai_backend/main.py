@@ -4,17 +4,33 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import logging
+import traceback
 
 from ai_backend.config import settings  # noqa: F401 - load .env via pydantic-settings
+from ai_backend.log_utils import log_json, ColoredJsonFormatter
 from ai_backend.routers import clarify_once, clarify_with_steps, solve_problem
-from ai_backend.routers.common import ensure_jwks_prefetch
+from ai_backend.routers.common import ensure_jwks_prefetch, get_user_id_from_request
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Configure JSON logging: level prefix + JSON message (colored when TTY)
+_json_logger = logging.getLogger("ai_backend.json")
+_json_logger.setLevel(logging.INFO)
+_json_logger.propagate = False
+_handler = logging.StreamHandler()
+_handler.setFormatter(ColoredJsonFormatter("%(levelname)s:    %(message)s"))
+_json_logger.addHandler(_handler)
+
+
+# Suppress uvicorn's duplicate "Exception in ASGI application" + traceback; we log errors as JSON above
+class _SuppressUvicornExceptionLog(logging.Filter):
+    """Filter out uvicorn's default exception log so only our JSON log is shown."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return "Exception in ASGI application" not in msg
+
+
+_uvicorn_error_logger = logging.getLogger("uvicorn.error")
+_uvicorn_error_logger.addFilter(_SuppressUvicornExceptionLog())
 
 
 @asynccontextmanager
@@ -34,12 +50,37 @@ app = FastAPI(
 # Add exception handler for validation errors (422 = Unprocessable Entity, standard for body validation)
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    print(f"[VALIDATION ERROR] Path: {request.url.path}")
-    print(f"[VALIDATION ERROR] Method: {request.method}")
-    print(f"[VALIDATION ERROR] Errors: {exc.errors()}")
+    log_json(
+        source="validation",
+        level="warning",
+        message=f"Path: {request.url.path}, Method: {request.method}, Errors: {exc.errors()}",
+        user_id=None,
+        traceback=None,
+    )
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": exc.errors(), "message": "Validation error - check server logs for details"},
+    )
+
+
+# Log unhandled exceptions as JSON (same format as other logs) then return 500
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    user_id = None
+    try:
+        user_id = get_user_id_from_request(request)
+    except Exception:
+        pass
+    log_json(
+        source="exception",
+        level="error",
+        message=str(exc),
+        user_id=user_id,
+        traceback=traceback.format_exc(),
+    )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal server error", "message": str(exc)},
     )
 
 # Enable CORS for Flutter app

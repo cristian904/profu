@@ -20,12 +20,15 @@ exam-parser = { workspace = true }
 members = ["backend/ai_backend", "backend/crawler", "backend/exam_parser"]
 
 [tool.poe.tasks]
-ai = "uvicorn ai_backend.main:app --reload --host 0.0.0.0 --port 8080"
+# Watch only backend/ai_backend so other project writes (logs, Flutter, etc.) don't trigger reload.
+# Exclude __pycache__ and .pyc; --reload-delay debounces rapid phantom changes (e.g. IDE/watcher quirks).
+ai = "uvicorn ai_backend.main:app --reload --reload-dir backend/ai_backend --reload-exclude '**/__pycache__/**' --reload-exclude '**/*.pyc' --reload-delay 0.5 --host 0.0.0.0 --port 8080"
 # Copy root .env into flutter_app so Flutter uses the same config as ai_backend
 copy_env_flutter = "python -c \"import shutil; from pathlib import Path; s=Path('.env'); d=Path('flutter_app/.env'); shutil.copy(s,d) if s.exists() else None\""
 flutter_run = { shell = "flutter run -d chrome", cwd = "flutter_app" }
 ui = ["copy_env_flutter", "flutter_run"]
-supabase = { shell = "npx supabase start" }
+# --ignore-health-checks: allows start on Docker Desktop when vector container is unhealthy (connection refused to Docker socket)
+supabase = { shell = "npx supabase start --ignore-health-check" }
 test = ["test_ai", "test_ui"]
 test_ai = "pytest backend/ai_backend/tests -v"
 test_ui = { shell = "flutter test", cwd = "flutter_app" }
@@ -36,4 +39,3 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["profu"]
-

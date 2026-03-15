@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import StreamingResponse
-from typing import TypedDict, Annotated, Sequence
+from typing import TypedDict, Annotated, Sequence, Optional, NotRequired
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
@@ -17,10 +17,10 @@ import time
 import json
 import re
 import base64
-import logging
 from io import BytesIO
 
 from ai_backend.config import settings
+from ai_backend.log_utils import log_json
 from .common import (
     get_llm,
     get_supabase_client,
@@ -30,9 +30,6 @@ from .common import (
     get_solve_quota_count,
     load_conversation_history_for_user,
 )
-
-# Set up logger
-logger = logging.getLogger(__name__)
 
 # Message shown when user exceeds monthly solve-problem quota
 QUOTA_LIMIT_MESSAGE = (
@@ -51,6 +48,20 @@ class ProblemSolvingState(TypedDict):
     student_work: str
     hint_level: int
     full_solution_requested: bool
+    user_id: NotRequired[Optional[str]]  # Set by stream endpoint for logging
+
+
+def _user_id_from_state(state: ProblemSolvingState) -> Optional[UUID]:
+    """Extract user_id from graph state for logging (stream endpoint sets it)."""
+    uid = state.get("user_id")
+    if not uid:
+        return None
+    if isinstance(uid, UUID):
+        return uid
+    try:
+        return UUID(uid) if isinstance(uid, str) else None
+    except (ValueError, TypeError):
+        return None
 
 
 class ProblemSolveRequest(BaseModel):
@@ -92,17 +103,35 @@ def extract_json_from_text(text: str) -> dict:
 
 async def perform_ocr(image_bytes: bytes) -> str:
     """Use Gemini Vision API to extract text from image"""
-    logger.info(f"[OCR] Starting OCR for image of {len(image_bytes)} bytes")
+    log_json(
+        source="ocr",
+        level="info",
+        message=f"Starting OCR for image of {len(image_bytes)} bytes",
+        user_id=None,
+        traceback=None,
+    )
 
     from langchain_core.messages import HumanMessage
     from langchain_google_genai import ChatGoogleGenerativeAI
     from PIL import Image
 
     if not settings.google_api_key:
-        logger.error("[OCR] GOOGLE_API_KEY not found in environment")
+        log_json(
+            source="ocr",
+            level="error",
+            message="GOOGLE_API_KEY not found in environment",
+            user_id=None,
+            traceback=None,
+        )
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not found")
 
-    logger.info("[OCR] Initializing Gemini Vision model")
+    log_json(
+        source="ocr",
+        level="info",
+        message="Initializing Gemini Vision model",
+        user_id=None,
+        traceback=None,
+    )
     vision_llm = ChatGoogleGenerativeAI(
         model=settings.gemini_model,
         temperature=0.0,
@@ -114,14 +143,32 @@ descrie-le în detaliu. Returnează doar textul problemei, fără comentarii sup
 Dacă există grafice sau diagrame, descrie-le clar și precis."""
     
     try:
-        logger.info("[OCR] Converting image bytes to PIL Image")
+        log_json(
+            source="ocr",
+            level="info",
+            message="Converting image bytes to PIL Image",
+            user_id=None,
+            traceback=None,
+        )
         # Convert bytes to PIL Image
         image = Image.open(BytesIO(image_bytes))
-        logger.info(f"[OCR] Image opened: size={image.size}, mode={image.mode}")
+        log_json(
+            source="ocr",
+            level="info",
+            message=f"Image opened: size={image.size}, mode={image.mode}",
+            user_id=None,
+            traceback=None,
+        )
         
         # For langchain-google-genai, we can pass PIL Image directly in the content
         # The library will handle the conversion
-        logger.info("[OCR] Creating message with PIL Image")
+        log_json(
+            source="ocr",
+            level="info",
+            message="Creating message with PIL Image",
+            user_id=None,
+            traceback=None,
+        )
         message = HumanMessage(
             content=[
                 {"type": "text", "text": prompt},
@@ -129,29 +176,78 @@ Dacă există grafice sau diagrame, descrie-le clar și precis."""
             ]
         )
         
-        logger.info("[OCR] Calling Gemini Vision API with PIL Image")
+        log_json(
+            source="ocr",
+            level="info",
+            message="Calling Gemini Vision API with PIL Image",
+            user_id=None,
+            traceback=None,
+        )
         response = await vision_llm.ainvoke([message])
-        logger.info(f"[OCR] OCR completed successfully, extracted {len(response.content)} characters")
+        log_json(
+            source="ocr",
+            level="info",
+            message=f"OCR completed successfully, extracted {len(response.content)} characters",
+            user_id=None,
+            traceback=None,
+        )
         return response.content.strip()
     except Exception as e:
-        logger.warning(f"[OCR] Failed with PIL Image, trying base64 fallback: {str(e)}")
+        log_json(
+            source="ocr",
+            level="warning",
+            message=f"Failed with PIL Image, trying base64 fallback: {e!s}",
+            user_id=None,
+            traceback=None,
+        )
         # Fallback: try with base64
         try:
-            logger.info("[OCR] Encoding image to base64")
-            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-            logger.info(f"[OCR] Base64 encoded, length: {len(image_base64)}")
+            log_json(
+                source="ocr",
+                level="info",
+                message="Encoding image to base64",
+                user_id=None,
+                traceback=None,
+            )
+            image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+            log_json(
+                source="ocr",
+                level="info",
+                message=f"Base64 encoded, length: {len(image_base64)}",
+                user_id=None,
+                traceback=None,
+            )
             message = HumanMessage(
                 content=[
                     {"type": "text", "text": prompt},
                     {"type": "image_url", "image_url": f"data:image/png;base64,{image_base64}"}
                 ]
             )
-            logger.info("[OCR] Calling Gemini Vision API with base64")
+            log_json(
+                source="ocr",
+                level="info",
+                message="Calling Gemini Vision API with base64",
+                user_id=None,
+                traceback=None,
+            )
             response = await vision_llm.ainvoke([message])
-            logger.info(f"[OCR] OCR completed with base64 fallback, extracted {len(response.content)} characters")
+            log_json(
+                source="ocr",
+                level="info",
+                message=f"OCR completed with base64 fallback, extracted {len(response.content)} characters",
+                user_id=None,
+                traceback=None,
+            )
             return response.content.strip()
         except Exception as e2:
-            logger.error(f"[OCR] Both methods failed. Base64 error: {str(e2)}")
+            import traceback as tb
+            log_json(
+                source="ocr",
+                level="error",
+                message=f"Both methods failed. Base64 error: {e2!s}",
+                user_id=None,
+                traceback=tb.format_exc(),
+            )
             raise HTTPException(status_code=500, detail=f"OCR failed: {str(e2)}")
 
 
@@ -166,15 +262,26 @@ async def upload_problem_image(
     Returns the extracted problem text.
     Requires Authorization: Bearer <Supabase JWT>. Enforces monthly solve quota before OCR.
     """
-    logger.info(f"[UPLOAD] ===== Upload request received =====")
-    logger.info(f"[UPLOAD] Filename: {file.filename}, Content-Type: {file.content_type}")
+    log_json(
+        source="solve_problem_upload",
+        level="info",
+        message=f"Upload request received. Filename: {file.filename}, Content-Type: {file.content_type}",
+        user_id=user_id,
+        traceback=None,
+    )
     
     # Auth and quota check before any file read or OCR
     threshold = getattr(settings, "solve_monthly_quota_threshold", 0) or 0
     if threshold > 0:
         count = get_solve_quota_count(user_id, supabase)
         if count >= threshold:
-            logger.info(f"[UPLOAD] Quota exceeded: user={user_id} count={count} threshold={threshold}")
+            log_json(
+                source="solve_problem_upload",
+                level="info",
+                message=f"Quota exceeded: user={user_id} count={count} threshold={threshold}",
+                user_id=user_id,
+                traceback=None,
+            )
             raise HTTPException(
                 status_code=403,
                 detail=QUOTA_LIMIT_MESSAGE,
@@ -182,14 +289,32 @@ async def upload_problem_image(
     
     try:
         # Read image bytes first (before validation, to ensure we can read it)
-        logger.info("[UPLOAD] Reading file bytes...")
+        log_json(
+            source="solve_problem_upload",
+            level="info",
+            message="Reading file bytes...",
+            user_id=user_id,
+            traceback=None,
+        )
         image_bytes = await file.read()
         
         if len(image_bytes) == 0:
-            logger.error("[UPLOAD] File is empty")
+            log_json(
+                source="solve_problem_upload",
+                level="error",
+                message="File is empty",
+                user_id=user_id,
+                traceback=None,
+            )
             raise HTTPException(status_code=400, detail="Uploaded file is empty")
         
-        logger.info(f"[UPLOAD] Read {len(image_bytes)} bytes from file")
+        log_json(
+            source="solve_problem_upload",
+            level="info",
+            message=f"Read {len(image_bytes)} bytes from file",
+            user_id=user_id,
+            traceback=None,
+        )
         
         # Validate file is an image - check content_type first, but fall back to file extension
         # Be lenient - accept if either content_type OR file extension indicates it's an image
@@ -197,22 +322,46 @@ async def upload_problem_image(
         validation_method = ""
         
         # First check content_type
-        if file.content_type and file.content_type.startswith('image/'):
+        if file.content_type and file.content_type.startswith("image/"):
             is_valid_image = True
             validation_method = f"content_type: {file.content_type}"
-            print(f"[UPLOAD] Validated by {validation_method}")
+            log_json(
+                source="solve_problem_upload",
+                level="info",
+                message=f"Validated by {validation_method}",
+                user_id=user_id,
+                traceback=None,
+            )
         elif file.filename:
             # If content_type doesn't indicate image, check file extension
-            valid_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'}
-            file_ext = file.filename.lower().split('.')[-1] if '.' in file.filename else ''
-            if f'.{file_ext}' in valid_extensions:
+            valid_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
+            file_ext = file.filename.lower().split(".")[-1] if "." in file.filename else ""
+            if f".{file_ext}" in valid_extensions:
                 is_valid_image = True
                 validation_method = f"file extension: .{file_ext}"
-                print(f"[UPLOAD] Validated by {validation_method}")
+                log_json(
+                    source="solve_problem_upload",
+                    level="info",
+                    message=f"Validated by {validation_method}",
+                    user_id=user_id,
+                    traceback=None,
+                )
                 if file.content_type:
-                    print(f"[UPLOAD] Note: content_type was {file.content_type}, but file extension is valid")
+                    log_json(
+                        source="solve_problem_upload",
+                        level="info",
+                        message=f"Note: content_type was {file.content_type}, but file extension is valid",
+                        user_id=user_id,
+                        traceback=None,
+                    )
             else:
-                print(f"[UPLOAD] Warning: file extension not recognized: .{file_ext}")
+                log_json(
+                    source="solve_problem_upload",
+                    level="warning",
+                    message=f"File extension not recognized: .{file_ext}",
+                    user_id=user_id,
+                    traceback=None,
+                )
         
         if not is_valid_image:
             # Only reject if we can't validate it as an image by either method
@@ -223,25 +372,53 @@ async def upload_problem_image(
             )
         
         # Perform OCR
-        logger.info("[UPLOAD] Starting OCR process...")
+        log_json(
+            source="solve_problem_upload",
+            level="info",
+            message="Starting OCR process...",
+            user_id=user_id,
+            traceback=None,
+        )
         problem_text = await perform_ocr(image_bytes)
-        logger.info(f"[UPLOAD] OCR completed successfully, extracted {len(problem_text)} characters")
-        logger.info(f"[UPLOAD] Problem text preview: {problem_text[:100]}...")
+        log_json(
+            source="solve_problem_upload",
+            level="info",
+            message=f"OCR completed successfully, extracted {len(problem_text)} characters. Preview: {problem_text[:100]}...",
+            user_id=user_id,
+            traceback=None,
+        )
         
-        logger.info("[UPLOAD] ===== Upload completed successfully =====")
+        log_json(
+            source="solve_problem_upload",
+            level="info",
+            message="Upload completed successfully",
+            user_id=user_id,
+            traceback=None,
+        )
         return {
             "problem_text": problem_text,
             "filename": file.filename,
             "content_type": file.content_type
         }
     except HTTPException:
-        logger.error("[UPLOAD] HTTPException raised, re-raising")
+        log_json(
+            source="solve_problem_upload",
+            level="error",
+            message="HTTPException raised, re-raising",
+            user_id=user_id,
+            traceback=None,
+        )
         raise
     except Exception as e:
-        import traceback
-        error_trace = traceback.format_exc()
-        logger.error(f"[UPLOAD] Error processing image: {str(e)}")
-        logger.error(f"[UPLOAD] Traceback: {error_trace}")
+        import traceback as tb
+        error_trace = tb.format_exc()
+        log_json(
+            source="solve_problem_upload",
+            level="error",
+            message=f"Error processing image: {e!s}",
+            user_id=user_id,
+            traceback=error_trace,
+        )
         raise HTTPException(status_code=500, detail=f"Error processing image: {str(e)}")
 
 
@@ -301,18 +478,38 @@ async def suggest_problem(
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("[SUGGEST] Embedding failed")
+        import traceback as tb
+        log_json(
+            source="solve_problem_suggest",
+            level="error",
+            message=f"Embedding failed: {e!s}",
+            user_id=None,
+            traceback=tb.format_exc(),
+        )
         raise HTTPException(status_code=500, detail=f"Embedding failed: {str(e)}")
 
     try:
         r = supabase.rpc("match_documents", {"query_embedding": query_embedding, "match_count": 5}).execute()
         rows = (r.data or []) if hasattr(r, "data") else []
     except Exception as e:
-        logger.exception("[SUGGEST] match_documents RPC failed")
+        import traceback as tb
+        log_json(
+            source="solve_problem_suggest",
+            level="error",
+            message=f"match_documents RPC failed: {e!s}",
+            user_id=None,
+            traceback=tb.format_exc(),
+        )
         raise HTTPException(status_code=500, detail=f"Vector search failed: {str(e)}")
 
     doc_ids = [row.get("id") for row in rows]
-    logger.info("[SUGGEST] document ids shown to user (check in DB): %s", doc_ids)
+    log_json(
+        source="solve_problem_suggest",
+        level="info",
+        message=f"Document ids shown to user (check in DB): {doc_ids}",
+        user_id=None,
+        traceback=None,
+    )
 
     problems = [SuggestedProblemItem(statement=(row.get("content") or "")) for row in rows]
     # Build message with full problem text for each
@@ -329,45 +526,29 @@ def _make_detect_intent(llm):
     """Factory: Node 1 - Detect user intent (uses injected llm)."""
 
     async def detect_intent(state: ProblemSolvingState) -> ProblemSolvingState:
-        logger.info("[LANGGRAPH] ===== Node 1: detect_intent =====")
-        logger.info(f"[LANGGRAPH] Messages in state: {len(state.get('messages', []))}")
-
-        # Check if this is the initial message (no explicit intent yet)
-        # If so, ask the user about their preference
-        messages_list = state.get('messages', [])
-
-        # #region agent log - Hypothesis A: Check initial message detection
-        import json
-        log_data = {
-            "location": "solve_problem.py:detect_intent",
-            "message": "Checking for initial message",
-            "data": {
-                "messages_count": len(messages_list),
-                "first_message_type": type(messages_list[0]).__name__ if messages_list else "None",
-                "first_message_content": messages_list[0].content[:100] if messages_list and hasattr(messages_list[0], 'content') else "N/A",
-                "problem_text_length": len(state.get('problem_text', ''))
-            },
-            "timestamp": int(time.time() * 1000),
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "A"
-        }
-        try:
-            with open(r'd:\_CRISTIAN\profu\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps(log_data) + '\n')
-        except Exception:
-            pass
-        # #endregion
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message=f"Node 1: detect_intent. Messages in state: {len(state.get('messages', []))}",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
+        messages_list = state.get("messages", [])
 
         # Check if this is the first user message (initial upload message)
         # We check if there's exactly one HumanMessage and it's likely the initial "Am încărcat problema" message
         if len(messages_list) == 1 and isinstance(messages_list[0], HumanMessage):
             user_message = messages_list[0].content.lower()
             # Check if it's the initial message pattern
-            if 'încărcat' in user_message or 'problem' in user_message or len(user_message) < 50:
-                logger.info("[LANGGRAPH] Initial message detected - returning initial question")
-                # Initial state - ask about solution preference
-                problem_text = state.get('problem_text', '')
+            if "încărcat" in user_message or "problem" in user_message or len(user_message) < 50:
+                log_json(
+                    source="solve_problem_langgraph",
+                    level="info",
+                    message="Initial message detected - returning initial question",
+                    user_id=_user_id_from_state(state),
+                    traceback=None,
+                )
+                problem_text = state.get("problem_text", "")
                 if problem_text:
                     initial_message = AIMessage(
                         content=f"Pare o problemă interesantă!\n\n**Problema:**\n{problem_text}\n\nAi vrea o rezolvare completă sau un hint?"
@@ -376,61 +557,27 @@ def _make_detect_intent(llm):
                     initial_message = AIMessage(
                         content="Pare o problemă interesantă! Ai vrea o rezolvare completă sau un hint?"
                     )
-                logger.info("[LANGGRAPH] Returning initial_question intent")
-
-                # #region agent log - Hypothesis A: Initial message created
-                log_data = {
-                    "location": "solve_problem.py:detect_intent",
-                    "message": "Initial message created",
-                    "data": {
-                        "has_problem_text": bool(problem_text),
-                        "initial_message_length": len(initial_message.content)
-                    },
-                    "timestamp": int(time.time() * 1000),
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "A"
-                }
-                try:
-                    with open(r'd:\_CRISTIAN\profu\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json.dumps(log_data) + '\n')
-                except Exception:
-                    pass
-                # #endregion
-
-                # Return state with initial message
-                # Note: add_messages will merge this with existing messages, so we need to be careful
+                log_json(
+                    source="solve_problem_langgraph",
+                    level="info",
+                    message="Returning initial_question intent",
+                    user_id=_user_id_from_state(state),
+                    traceback=None,
+                )
                 new_state = {
                     **state,
-                    "intent": "initial_question",  # Special intent for initial question
+                    "intent": "initial_question",
                 }
-                # Set messages to only contain the initial message (don't merge with existing)
                 new_state["messages"] = [initial_message]
-
-                # #region agent log - Hypothesis A: State returned with initial message
-                log_data = {
-                    "location": "solve_problem.py:detect_intent",
-                    "message": "Returning state with initial message",
-                    "data": {
-                        "intent": new_state.get('intent'),
-                        "messages_count": len(new_state.get('messages', [])),
-                        "message_content_preview": new_state.get('messages', [])[0].content[:100] if new_state.get('messages') else "None"
-                    },
-                    "timestamp": int(time.time() * 1000),
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "A"
-                }
-                try:
-                    with open(r'd:\_CRISTIAN\profu\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                        f.write(json.dumps(log_data) + '\n')
-                except Exception:
-                    pass
-                # #endregion
-
                 return new_state
-    
-        logger.info("[LANGGRAPH] Not initial message - detecting intent from user message")
+
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Not initial message - detecting intent from user message",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
 
         system_prompt = PROMPTS['problem_solving']['intent_detector']['system_prompt']
 
@@ -438,39 +585,86 @@ def _make_detect_intent(llm):
         messages = [SystemMessage(content=system_prompt)]
 
         # Add conversation history
-        if state.get('messages'):
-            messages.extend(state['messages'][-10:])  # Last 10 messages for context
-            logger.info(f"[LANGGRAPH] Added {len(state['messages'][-10:])} messages to context")
+        if state.get("messages"):
+            messages.extend(state["messages"][-10:])
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Added {len(state['messages'][-10:])} messages to context",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
         # Add current query if available
-        if state.get('messages') and len(state['messages']) > 0:
-            last_message = state['messages'][-1]
+        if state.get("messages") and len(state["messages"]) > 0:
+            last_message = state["messages"][-1]
             if isinstance(last_message, HumanMessage):
-                logger.info(f"[LANGGRAPH] Last user message: {last_message.content[:50]}...")
+                log_json(
+                    source="solve_problem_langgraph",
+                    level="info",
+                    message=f"Last user message: {last_message.content[:50]}...",
+                    user_id=_user_id_from_state(state),
+                    traceback=None,
+                )
                 messages.append(HumanMessage(content=f"Mesajul elevului: {last_message.content}"))
 
-        logger.info("[LANGGRAPH] Calling LLM for intent detection...")
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Calling LLM for intent detection...",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
         response = await llm.ainvoke(messages)
-        logger.info(f"[LANGGRAPH] LLM response received: {response.content[:100]}...")
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message=f"LLM response received: {response.content[:100]}...",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
 
         # Extract intent from response
         try:
             result = extract_json_from_text(response.content)
-            intent = result.get('intent', 'new_hint')
-            logger.info(f"[LANGGRAPH] Intent extracted from JSON: {intent}")
-        except:
-            logger.warning("[LANGGRAPH] Failed to extract JSON, using keyword detection")
-            # Fallback: simple keyword detection
+            intent = result.get("intent", "new_hint")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Intent extracted from JSON: {intent}",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
+        except Exception:
+            log_json(
+                source="solve_problem_langgraph",
+                level="warning",
+                message="Failed to extract JSON, using keyword detection",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
             content_lower = response.content.lower()
-            if any(word in content_lower for word in ['solve', 'soluție', 'completă', 'arătă']):
-                intent = 'solve'
-            elif any(word in content_lower for word in ['progres', 'rezolvat', 'făcut']):
-                intent = 'progress'
+            if any(word in content_lower for word in ["solve", "soluție", "completă", "arătă"]):
+                intent = "solve"
+            elif any(word in content_lower for word in ["progres", "rezolvat", "făcut"]):
+                intent = "progress"
             else:
-                intent = 'new_hint'
-            logger.info(f"[LANGGRAPH] Intent detected via keywords: {intent}")
+                intent = "new_hint"
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Intent detected via keywords: {intent}",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
-        logger.info(f"[LANGGRAPH] ===== Node 1 complete: intent={intent} =====")
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message=f"Node 1 complete: intent={intent}",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
         return {
             **state,
             "intent": intent,
@@ -487,56 +681,27 @@ def _make_provide_hint(llm):
         """Node 2: Provide a new hint with explanation and follow-up questions"""
         config = config or {}
         stream_queue = config.get("configurable", {}).get("stream_queue")
-        logger.info("[LANGGRAPH] ===== Node 2: provide_hint =====")
-
-        # #region agent log - Hypothesis B: Check if initial question should be returned
-        import json
-        log_data = {
-            "location": "solve_problem.py:provide_hint",
-            "message": "Checking if initial question present",
-            "data": {
-                "intent": state.get('intent'),
-                "has_messages": bool(state.get('messages')),
-                "messages_count": len(state.get('messages', [])),
-                "last_message_type": type(state.get('messages', [])[-1]).__name__ if state.get('messages') else "None"
-            },
-            "timestamp": int(time.time() * 1000),
-            "sessionId": "debug-session",
-            "runId": "run1",
-            "hypothesisId": "B"
-        }
-        try:
-            with open(r'd:\_CRISTIAN\profu\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                f.write(json.dumps(log_data) + '\n')
-        except Exception:
-            pass
-        # #endregion
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Node 2: provide_hint",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
 
         # If we already have a message (initial question), just return it
-        if state.get('intent') == 'initial_question' and state.get('messages'):
-            logger.info("[LANGGRAPH] Initial question already present, returning state")
+        if state.get("intent") == "initial_question" and state.get("messages"):
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message="Initial question already present, returning state",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
             if stream_queue is not None:
                 existing_content = state["messages"][-1].content
                 stream_queue.put_nowait(existing_content)
                 stream_queue.put_nowait(None)
-            # #region agent log - Hypothesis B: Returning initial question
-            log_data = {
-                "location": "solve_problem.py:provide_hint",
-                "message": "Returning initial question without LLM call",
-                "data": {
-                    "message_content_preview": state.get('messages', [])[-1].content[:100] if state.get('messages') else "None"
-                },
-                "timestamp": int(time.time() * 1000),
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "B"
-            }
-            try:
-                with open(r'd:\_CRISTIAN\profu\.cursor\debug.log', 'a', encoding='utf-8') as f:
-                    f.write(json.dumps(log_data) + '\n')
-            except Exception:
-                pass
-            # #endregion
             return state
 
         system_prompt = PROMPTS['problem_solving']['hint_provider']['system_prompt']
@@ -544,28 +709,58 @@ def _make_provide_hint(llm):
         messages = [SystemMessage(content=system_prompt)]
 
         # Add problem text
-        if state.get('problem_text'):
+        if state.get("problem_text"):
             messages.append(SystemMessage(content=f"Textul problemei: {state['problem_text']}"))
-            logger.info(f"[LANGGRAPH] Added problem text ({len(state['problem_text'])} chars)")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Added problem text ({len(state['problem_text'])} chars)",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
         # Add conversation history
-        if state.get('messages'):
-            messages.extend(state['messages'][-10:])
-            logger.info(f"[LANGGRAPH] Added {len(state['messages'][-10:])} messages to context")
+        if state.get("messages"):
+            messages.extend(state["messages"][-10:])
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Added {len(state['messages'][-10:])} messages to context",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
         # Add hint level context
-        hint_level = state.get('hint_level', 0) + 1
+        hint_level = state.get("hint_level", 0) + 1
         messages.append(SystemMessage(content=f"Nivelul hint-ului curent: {hint_level}"))
-        logger.info(f"[LANGGRAPH] Hint level: {hint_level}")
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message=f"Hint level: {hint_level}",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
 
         # Add student work if available
-        if state.get('student_work'):
+        if state.get("student_work"):
             messages.append(SystemMessage(content=f"Progresul elevului până acum: {state['student_work']}"))
-            logger.info(f"[LANGGRAPH] Added student work: {state['student_work'][:50]}...")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Added student work: {state['student_work'][:50]}...",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
         if stream_queue is not None:
             stream_queue.put_nowait("[THINKING]")
-            logger.info("[LANGGRAPH] Streaming hint...")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message="Streaming hint...",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
             accumulated = []
             async for chunk in llm.astream(messages):
                 if getattr(chunk, "content", None):
@@ -574,12 +769,36 @@ def _make_provide_hint(llm):
             full_content = "".join(accumulated)
             response = AIMessage(content=full_content)
             stream_queue.put_nowait(None)
-            logger.info(f"[LANGGRAPH] Hint generated: {len(full_content)} characters (streamed)")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Hint generated: {len(full_content)} characters (streamed)",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
         else:
-            logger.info("[LANGGRAPH] Calling LLM to generate hint...")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message="Calling LLM to generate hint...",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
             response = await llm.ainvoke(messages)
-            logger.info(f"[LANGGRAPH] Hint generated: {len(response.content)} characters")
-        logger.info(f"[LANGGRAPH] ===== Node 2 complete =====")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Hint generated: {len(response.content)} characters",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Node 2 complete",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
 
         return {
             **state,
@@ -595,34 +814,67 @@ def _make_evaluate_progress(llm):
 
     async def evaluate_progress(state: ProblemSolvingState) -> ProblemSolvingState:
         """Node 3: Evaluate student's progress/work"""
-        logger.info("[LANGGRAPH] ===== Node 3: evaluate_progress =====")
-
-        system_prompt = PROMPTS['problem_solving']['progress_evaluator']['system_prompt']
-
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Node 3: evaluate_progress",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
+        system_prompt = PROMPTS["problem_solving"]["progress_evaluator"]["system_prompt"]
         messages = [SystemMessage(content=system_prompt)]
 
         # Add problem text
-        if state.get('problem_text'):
+        if state.get("problem_text"):
             messages.append(SystemMessage(content=f"Textul problemei: {state['problem_text']}"))
-            logger.info(f"[LANGGRAPH] Added problem text")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message="Added problem text",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
         # Add conversation history
-        if state.get('messages'):
-            messages.extend(state['messages'][-10:])
-            logger.info(f"[LANGGRAPH] Added {len(state['messages'][-10:])} messages to context")
+        if state.get("messages"):
+            messages.extend(state["messages"][-10:])
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Added {len(state['messages'][-10:])} messages to context",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
         # Extract student work from last message
-        if state.get('messages') and len(state['messages']) > 0:
-            last_message = state['messages'][-1]
+        if state.get("messages") and len(state["messages"]) > 0:
+            last_message = state["messages"][-1]
             if isinstance(last_message, HumanMessage):
                 student_work = last_message.content
                 messages.append(SystemMessage(content=f"Progresul elevului: {student_work}"))
-                logger.info(f"[LANGGRAPH] Evaluating student work: {student_work[:50]}...")
+                log_json(
+                    source="solve_problem_langgraph",
+                    level="info",
+                    message=f"Evaluating student work: {student_work[:50]}...",
+                    user_id=_user_id_from_state(state),
+                    traceback=None,
+                )
 
-        logger.info("[LANGGRAPH] Calling LLM to evaluate progress...")
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Calling LLM to evaluate progress...",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
         response = await llm.ainvoke(messages)
-        logger.info(f"[LANGGRAPH] Progress evaluation complete: {len(response.content)} characters")
-        logger.info(f"[LANGGRAPH] ===== Node 3 complete =====")
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message=f"Progress evaluation complete: {len(response.content)} characters. Node 3 complete",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
 
         return {
             **state,
@@ -638,37 +890,82 @@ def _make_detect_progress_intent(llm):
 
     async def detect_progress_intent(state: ProblemSolvingState) -> ProblemSolvingState:
         """Node 4: Detect if progress is good or bad"""
-        logger.info("[LANGGRAPH] ===== Node 4: detect_progress_intent =====")
-
-        system_prompt = PROMPTS['problem_solving']['progress_intent_detector']['system_prompt']
-
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Node 4: detect_progress_intent",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
+        system_prompt = PROMPTS["problem_solving"]["progress_intent_detector"]["system_prompt"]
         messages = [SystemMessage(content=system_prompt)]
 
         # Add conversation history
-        if state.get('messages'):
-            messages.extend(state['messages'][-10:])
-            logger.info(f"[LANGGRAPH] Added {len(state['messages'][-10:])} messages to context")
+        if state.get("messages"):
+            messages.extend(state["messages"][-10:])
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Added {len(state['messages'][-10:])} messages to context",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
-        logger.info("[LANGGRAPH] Calling LLM to detect progress intent...")
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Calling LLM to detect progress intent...",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
         response = await llm.ainvoke(messages)
-        logger.info(f"[LANGGRAPH] LLM response: {response.content[:100]}...")
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message=f"LLM response: {response.content[:100]}...",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
 
         # Extract progress intent
         try:
             result = extract_json_from_text(response.content)
-            progress_intent = result.get('progress_intent', 'good')
-            logger.info(f"[LANGGRAPH] Progress intent extracted from JSON: {progress_intent}")
-        except:
-            logger.warning("[LANGGRAPH] Failed to extract JSON, using keyword detection")
-            # Fallback: keyword detection
+            progress_intent = result.get("progress_intent", "good")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Progress intent extracted from JSON: {progress_intent}",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
+        except Exception:
+            log_json(
+                source="solve_problem_langgraph",
+                level="warning",
+                message="Failed to extract JSON, using keyword detection",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
             content_lower = response.content.lower()
-            if any(word in content_lower for word in ['greșit', 'incorect', 'eroare', 'nu e bine']):
-                progress_intent = 'bad'
+            if any(word in content_lower for word in ["greșit", "incorect", "eroare", "nu e bine"]):
+                progress_intent = "bad"
             else:
-                progress_intent = 'good'
-            logger.info(f"[LANGGRAPH] Progress intent detected via keywords: {progress_intent}")
+                progress_intent = "good"
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Progress intent detected via keywords: {progress_intent}",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
-        logger.info(f"[LANGGRAPH] ===== Node 4 complete: progress_intent={progress_intent} =====")
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message=f"Node 4 complete: progress_intent={progress_intent}",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
         return {
             **state,
             "intent": progress_intent,
@@ -685,25 +982,47 @@ def _make_explain_error(llm):
         """Node 5: Explain errors without giving hints"""
         config = config or {}
         stream_queue = config.get("configurable", {}).get("stream_queue")
-        logger.info("[LANGGRAPH] ===== Node 5: explain_error =====")
-
-        system_prompt = PROMPTS['problem_solving']['error_explainer']['system_prompt']
-
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Node 5: explain_error",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
+        system_prompt = PROMPTS["problem_solving"]["error_explainer"]["system_prompt"]
         messages = [SystemMessage(content=system_prompt)]
 
         # Add problem text
-        if state.get('problem_text'):
+        if state.get("problem_text"):
             messages.append(SystemMessage(content=f"Textul problemei: {state['problem_text']}"))
-            logger.info(f"[LANGGRAPH] Added problem text")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message="Added problem text",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
         # Add conversation history
-        if state.get('messages'):
-            messages.extend(state['messages'][-10:])
-            logger.info(f"[LANGGRAPH] Added {len(state['messages'][-10:])} messages to context")
+        if state.get("messages"):
+            messages.extend(state["messages"][-10:])
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Added {len(state['messages'][-10:])} messages to context",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
         if stream_queue is not None:
             stream_queue.put_nowait("[THINKING]")
-            logger.info("[LANGGRAPH] Streaming error explanation...")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message="Streaming error explanation...",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
             accumulated = []
             async for chunk in llm.astream(messages):
                 if getattr(chunk, "content", None):
@@ -712,12 +1031,29 @@ def _make_explain_error(llm):
             full_content = "".join(accumulated)
             response = AIMessage(content=full_content)
             stream_queue.put_nowait(None)
-            logger.info(f"[LANGGRAPH] Error explanation generated: {len(full_content)} characters (streamed)")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Error explanation generated: {len(full_content)} characters (streamed). Node 5 complete",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
         else:
-            logger.info("[LANGGRAPH] Calling LLM to explain errors...")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message="Calling LLM to explain errors...",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
             response = await llm.ainvoke(messages)
-            logger.info(f"[LANGGRAPH] Error explanation generated: {len(response.content)} characters")
-        logger.info(f"[LANGGRAPH] ===== Node 5 complete =====")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Error explanation generated: {len(response.content)} characters. Node 5 complete",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
         return {
             **state,
@@ -734,25 +1070,47 @@ def _make_provide_solution(llm):
         """Node 6: Provide full solution"""
         config = config or {}
         stream_queue = config.get("configurable", {}).get("stream_queue")
-        logger.info("[LANGGRAPH] ===== Node 6: provide_solution =====")
-
-        system_prompt = PROMPTS['problem_solving']['solution_provider']['system_prompt']
-
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Node 6: provide_solution",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
+        system_prompt = PROMPTS["problem_solving"]["solution_provider"]["system_prompt"]
         messages = [SystemMessage(content=system_prompt)]
 
         # Add problem text
-        if state.get('problem_text'):
+        if state.get("problem_text"):
             messages.append(SystemMessage(content=f"Textul problemei: {state['problem_text']}"))
-            logger.info(f"[LANGGRAPH] Added problem text")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message="Added problem text",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
         # Add conversation history
-        if state.get('messages'):
-            messages.extend(state['messages'][-10:])
-            logger.info(f"[LANGGRAPH] Added {len(state['messages'][-10:])} messages to context")
+        if state.get("messages"):
+            messages.extend(state["messages"][-10:])
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Added {len(state['messages'][-10:])} messages to context",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
         if stream_queue is not None:
             stream_queue.put_nowait("[THINKING]")
-            logger.info("[LANGGRAPH] Streaming full solution...")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message="Streaming full solution...",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
             accumulated = []
             async for chunk in llm.astream(messages):
                 if getattr(chunk, "content", None):
@@ -761,12 +1119,29 @@ def _make_provide_solution(llm):
             full_content = "".join(accumulated)
             response = AIMessage(content=full_content)
             stream_queue.put_nowait(None)
-            logger.info(f"[LANGGRAPH] Full solution generated: {len(full_content)} characters (streamed)")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Full solution generated: {len(full_content)} characters (streamed). Node 6 complete",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
         else:
-            logger.info("[LANGGRAPH] Calling LLM to generate full solution...")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message="Calling LLM to generate full solution...",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
             response = await llm.ainvoke(messages)
-            logger.info(f"[LANGGRAPH] Full solution generated: {len(response.content)} characters")
-        logger.info(f"[LANGGRAPH] ===== Node 6 complete =====")
+            log_json(
+                source="solve_problem_langgraph",
+                level="info",
+                message=f"Full solution generated: {len(response.content)} characters. Node 6 complete",
+                user_id=_user_id_from_state(state),
+                traceback=None,
+            )
 
         return {
             **state,
@@ -779,43 +1154,101 @@ def _make_provide_solution(llm):
 
 def route_after_intent(state: ProblemSolvingState) -> str:
     """Route after initial intent detection"""
-    intent = state.get('intent', 'new_hint')
-    logger.info(f"[LANGGRAPH] Routing after intent detection: intent={intent}")
-    
-    if intent == 'initial_question':
-        logger.info("[LANGGRAPH] Routing to provide_hint (initial question)")
-        return 'provide_hint'  # This will be skipped, message already in state
-    elif intent == 'solve':
-        logger.info("[LANGGRAPH] Routing to provide_solution")
-        return 'provide_solution'
-    elif intent == 'new_hint':
-        logger.info("[LANGGRAPH] Routing to provide_hint")
-        return 'provide_hint'
-    elif intent == 'progress':
-        logger.info("[LANGGRAPH] Routing to evaluate_progress")
-        return 'evaluate_progress'
+    intent = state.get("intent", "new_hint")
+    log_json(
+        source="solve_problem_langgraph",
+        level="info",
+        message=f"Routing after intent detection: intent={intent}",
+        user_id=_user_id_from_state(state),
+        traceback=None,
+    )
+    if intent == "initial_question":
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Routing to provide_hint (initial question)",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
+        return "provide_hint"
+    elif intent == "solve":
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Routing to provide_solution",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
+        return "provide_solution"
+    elif intent == "new_hint":
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Routing to provide_hint",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
+        return "provide_hint"
+    elif intent == "progress":
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Routing to evaluate_progress",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
+        return "evaluate_progress"
     else:
-        logger.info(f"[LANGGRAPH] Unknown intent, defaulting to provide_hint")
-        return 'provide_hint'
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Unknown intent, defaulting to provide_hint",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
+        return "provide_hint"
 
 
 def route_after_progress_eval(state: ProblemSolvingState) -> str:
     """Route after progress evaluation"""
-    logger.info("[LANGGRAPH] Routing to detect_progress_intent after progress evaluation")
-    return 'detect_progress_intent'
+    log_json(
+        source="solve_problem_langgraph",
+        level="info",
+        message="Routing to detect_progress_intent after progress evaluation",
+        user_id=_user_id_from_state(state),
+        traceback=None,
+    )
+    return "detect_progress_intent"
 
 
 def route_after_progress_intent(state: ProblemSolvingState) -> str:
     """Route after progress intent detection"""
-    intent = state.get('intent', 'good')
-    logger.info(f"[LANGGRAPH] Routing after progress intent: intent={intent}")
-    
-    if intent == 'bad':
-        logger.info("[LANGGRAPH] Routing to explain_error (bad progress)")
-        return 'explain_error'
+    intent = state.get("intent", "good")
+    log_json(
+        source="solve_problem_langgraph",
+        level="info",
+        message=f"Routing after progress intent: intent={intent}",
+        user_id=_user_id_from_state(state),
+        traceback=None,
+    )
+    if intent == "bad":
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Routing to explain_error (bad progress)",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
+        return "explain_error"
     else:
-        logger.info("[LANGGRAPH] Routing to provide_hint (good progress)")
-        return 'provide_hint'
+        log_json(
+            source="solve_problem_langgraph",
+            level="info",
+            message="Routing to provide_hint (good progress)",
+            user_id=_user_id_from_state(state),
+            traceback=None,
+        )
+        return "provide_hint"
 
 
 def build_problem_solving_graph(llm):
@@ -881,17 +1314,26 @@ async def solve_problem_stream(
     Uses LangGraph to manage conversation flow with intent detection and hint generation.
     Requires Authorization: Bearer <Supabase JWT>. Enforces monthly solve quota before running the graph.
     """
-    logger.info(f"[STREAM] ===== Stream request received =====")
-    logger.info(f"[STREAM] Query: {request.query[:50]}...")
-    logger.info(f"[STREAM] Problem text length: {len(request.problem_text)}")
-    logger.info(f"[STREAM] History length (client): {len(request.history)}")
+    log_json(
+        source="solve_problem_stream",
+        level="info",
+        message=f"Stream request received. Query: {request.query[:50]}..., problem_text length: {len(request.problem_text)}, history length: {len(request.history)}",
+        user_id=user_id,
+        traceback=None,
+    )
     
     # Auth and quota check before building state or running the graph
     threshold = getattr(settings, "solve_monthly_quota_threshold", 0) or 0
     if threshold > 0:
         count = get_solve_quota_count(user_id, supabase)
         if count > threshold:
-            logger.info(f"[STREAM] Quota exceeded: user={user_id} count={count} threshold={threshold}")
+            log_json(
+                source="solve_problem_stream",
+                level="info",
+                message=f"Quota exceeded: user={user_id} count={count} threshold={threshold}",
+                user_id=user_id,
+                traceback=None,
+            )
 
             async def quota_limit_stream():
                 for char in QUOTA_LIMIT_MESSAGE:
@@ -922,10 +1364,22 @@ async def solve_problem_stream(
                 loaded = load_conversation_history_for_user(user_id, request.conversation_id, supabase)
                 if loaded:
                     history = loaded
-            logger.info("[STREAM] Effective history length: %d", len(history))
+            log_json(
+                source="solve_problem_stream",
+                level="info",
+                message=f"Effective history length: {len(history)}",
+                user_id=user_id,
+                traceback=None,
+            )
 
-            logger.info("[STREAM] Building initial state...")
-            # Build initial state
+            log_json(
+                source="solve_problem_stream",
+                level="info",
+                message="Building initial state...",
+                user_id=user_id,
+                traceback=None,
+            )
+            # Build initial state (user_id for logging in graph nodes)
             initial_state: ProblemSolvingState = {
                 "messages": [],
                 "problem_text": request.problem_text,
@@ -933,11 +1387,18 @@ async def solve_problem_stream(
                 "student_work": "",
                 "hint_level": 0,
                 "full_solution_requested": False,
+                "user_id": str(user_id),
             }
             
             # Build conversation history
             if history:
-                logger.info(f"[STREAM] Adding {len(history)} messages from history")
+                log_json(
+                    source="solve_problem_stream",
+                    level="info",
+                    message=f"Adding {len(history)} messages from history",
+                    user_id=user_id,
+                    traceback=None,
+                )
                 for msg in history:
                     if msg.role == "user":
                         initial_state["messages"].append(HumanMessage(content=msg.content))
@@ -945,14 +1406,32 @@ async def solve_problem_stream(
                         initial_state["messages"].append(AIMessage(content=msg.content))
             
             # Add current query
-            logger.info(f"[STREAM] Adding current query to state")
+            log_json(
+                source="solve_problem_stream",
+                level="info",
+                message="Adding current query to state",
+                user_id=user_id,
+                traceback=None,
+            )
             initial_state["messages"].append(HumanMessage(content=request.query))
-            logger.info(f"[STREAM] Total messages in state: {len(initial_state['messages'])}")
+            log_json(
+                source="solve_problem_stream",
+                level="info",
+                message=f"Total messages in state: {len(initial_state['messages'])}",
+                user_id=user_id,
+                traceback=None,
+            )
             
             # Run the graph with a stream queue so content nodes can push chunks in real time
             stream_queue: asyncio.Queue = asyncio.Queue()
             config = {"configurable": {"stream_queue": stream_queue}}
-            logger.info("[STREAM] Building and invoking LangGraph (streaming)...")
+            log_json(
+                source="solve_problem_stream",
+                level="info",
+                message="Building and invoking LangGraph (streaming)...",
+                user_id=user_id,
+                traceback=None,
+            )
             graph = build_problem_solving_graph(llm)
             invoke_task = asyncio.create_task(graph.ainvoke(initial_state, config=config))
 
@@ -978,25 +1457,47 @@ async def solve_problem_stream(
                 if first_content_chunk:
                     time_to_first_token = time.time() - start_time
                     metadata = json.dumps({"ttft": round(time_to_first_token, 3)})
-                    logger.info(f"[STREAM] Time to first token: {time_to_first_token:.3f}s")
+                    log_json(
+                        source="solve_problem_stream",
+                        level="info",
+                        message=f"Time to first token: {time_to_first_token:.3f}s",
+                        user_id=user_id,
+                        traceback=None,
+                    )
                     yield f"data: [META]{metadata}\n\n"
                     first_content_chunk = False
                 content = item.replace("\n", "\\n")
                 yield f"data: {content}\n\n"
 
             await invoke_task
-            logger.info(f"[STREAM] Graph execution complete. Final intent: {invoke_task.result().get('intent')}")
+            log_json(
+                source="solve_problem_stream",
+                level="info",
+                message=f"Graph execution complete. Final intent: {invoke_task.result().get('intent')}",
+                user_id=user_id,
+                traceback=None,
+            )
 
             await asyncio.sleep(0.05)
-            logger.info("[STREAM] Sending [DONE] signal...")
+            log_json(
+                source="solve_problem_stream",
+                level="info",
+                message="Sending [DONE] signal. Stream completed successfully",
+                user_id=user_id,
+                traceback=None,
+            )
             yield "data: [DONE]\n\n"
-            logger.info("[STREAM] ===== Stream completed successfully =====")
             
         except Exception as e:
-            import traceback
-            error_trace = traceback.format_exc()
-            logger.error(f"[STREAM] Error in stream: {str(e)}")
-            logger.error(f"[STREAM] Traceback: {error_trace}")
+            import traceback as tb
+            error_trace = tb.format_exc()
+            log_json(
+                source="solve_problem_stream",
+                level="error",
+                message=f"Error in stream: {e!s}",
+                user_id=user_id,
+                traceback=error_trace,
+            )
             error_message = f"Eroare: {str(e)}"
             yield f"data: {error_message}\n\n"
             yield "data: [DONE]\n\n"

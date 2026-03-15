@@ -8,9 +8,13 @@ venv/
 env/
 ENV/
 .venv
+*.egg-info/
+**/*.egg-info/
 pip-log.txt
 pip-delete-this-directory.txt
 .cursor/
+*.log
+**/*.log
 latex_preview/
 supabase/
 
