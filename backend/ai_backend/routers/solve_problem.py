@@ -7,20 +7,24 @@ from uuid import UUID
 from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Depends
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import StreamingResponse
-from typing import TypedDict, Annotated, Sequence, Optional, NotRequired
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
-from langgraph.graph import StateGraph, END
-from langgraph.graph.message import add_messages
+from typing import Optional
+from langchain_core.messages import HumanMessage, AIMessage
 from pydantic import BaseModel
 import asyncio
 import time
-import json
-import re
-import base64
-from io import BytesIO
 
 from ai_backend.config import settings
 from ai_backend.log_utils import log_json
+from ai_backend.conversations.history import resolve_effective_history
+from ai_backend.parsing.json_extract import extract_json_from_text
+from ai_backend.streaming.sse import emit_done, emit_meta_ttft, escape_sse_data, sse_data_line
+from ai_backend.features.solve_problem.ocr import perform_ocr
+from ai_backend.features.solve_problem.embeddings import embed_query, normalize_embedding
+from ai_backend.features.solve_problem.graph import (
+    ProblemSolvingState,
+    build_problem_solving_graph as build_problem_solving_graph_impl,
+    user_id_from_state,
+)
 from .common import (
     get_llm,
     get_supabase_client,
@@ -40,28 +44,11 @@ QUOTA_LIMIT_MESSAGE = (
 router = APIRouter(prefix="/solve-problem", tags=["solve_problem"])
 
 
-class ProblemSolvingState(TypedDict):
-    """State for the problem solving graph"""
-    messages: Annotated[Sequence[BaseMessage], add_messages]
-    problem_text: str
-    intent: str
-    student_work: str
-    hint_level: int
-    full_solution_requested: bool
-    user_id: NotRequired[Optional[str]]  # Set by stream endpoint for logging
-
-
 def _user_id_from_state(state: ProblemSolvingState) -> Optional[UUID]:
-    """Extract user_id from graph state for logging (stream endpoint sets it)."""
-    uid = state.get("user_id")
-    if not uid:
-        return None
-    if isinstance(uid, UUID):
-        return uid
-    try:
-        return UUID(uid) if isinstance(uid, str) else None
-    except (ValueError, TypeError):
-        return None
+    """
+    Backwards-compatible wrapper for extracting user_id from graph state.
+    """
+    return user_id_from_state(state)
 
 
 class ProblemSolveRequest(BaseModel):
@@ -86,169 +73,6 @@ class SuggestProblemResponse(BaseModel):
     """Response for /suggest-problem: message + list of problems for FE buttons"""
     message: str
     problems: list[SuggestedProblemItem]
-
-
-def extract_json_from_text(text: str) -> dict:
-    """Extract JSON from text that might contain markdown code blocks"""
-    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', text, re.DOTALL)
-    if json_match:
-        return json.loads(json_match.group(1))
-    
-    json_match = re.search(r'\{.*\}', text, re.DOTALL)
-    if json_match:
-        return json.loads(json_match.group(0))
-    
-    raise ValueError("No JSON found in response")
-
-
-async def perform_ocr(image_bytes: bytes) -> str:
-    """Use Gemini Vision API to extract text from image"""
-    log_json(
-        source="ocr",
-        level="info",
-        message=f"Starting OCR for image of {len(image_bytes)} bytes",
-        user_id=None,
-        traceback=None,
-    )
-
-    from langchain_core.messages import HumanMessage
-    from langchain_google_genai import ChatGoogleGenerativeAI
-    from PIL import Image
-
-    if not settings.google_api_key:
-        log_json(
-            source="ocr",
-            level="error",
-            message="GOOGLE_API_KEY not found in environment",
-            user_id=None,
-            traceback=None,
-        )
-        raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not found")
-
-    log_json(
-        source="ocr",
-        level="info",
-        message="Initializing Gemini Vision model",
-        user_id=None,
-        traceback=None,
-    )
-    vision_llm = ChatGoogleGenerativeAI(
-        model=settings.gemini_model,
-        temperature=0.0,
-        google_api_key=settings.google_api_key,
-    )
-    
-    prompt = """Extrage textul din această imagine. Dacă există formule matematice, grafice sau diagrame, 
-descrie-le în detaliu. Returnează doar textul problemei, fără comentarii suplimentare.
-Dacă există grafice sau diagrame, descrie-le clar și precis."""
-    
-    try:
-        log_json(
-            source="ocr",
-            level="info",
-            message="Converting image bytes to PIL Image",
-            user_id=None,
-            traceback=None,
-        )
-        # Convert bytes to PIL Image
-        image = Image.open(BytesIO(image_bytes))
-        log_json(
-            source="ocr",
-            level="info",
-            message=f"Image opened: size={image.size}, mode={image.mode}",
-            user_id=None,
-            traceback=None,
-        )
-        
-        # For langchain-google-genai, we can pass PIL Image directly in the content
-        # The library will handle the conversion
-        log_json(
-            source="ocr",
-            level="info",
-            message="Creating message with PIL Image",
-            user_id=None,
-            traceback=None,
-        )
-        message = HumanMessage(
-            content=[
-                {"type": "text", "text": prompt},
-                image  # Pass PIL Image directly
-            ]
-        )
-        
-        log_json(
-            source="ocr",
-            level="info",
-            message="Calling Gemini Vision API with PIL Image",
-            user_id=None,
-            traceback=None,
-        )
-        response = await vision_llm.ainvoke([message])
-        log_json(
-            source="ocr",
-            level="info",
-            message=f"OCR completed successfully, extracted {len(response.content)} characters",
-            user_id=None,
-            traceback=None,
-        )
-        return response.content.strip()
-    except Exception as e:
-        log_json(
-            source="ocr",
-            level="warning",
-            message=f"Failed with PIL Image, trying base64 fallback: {e!s}",
-            user_id=None,
-            traceback=None,
-        )
-        # Fallback: try with base64
-        try:
-            log_json(
-                source="ocr",
-                level="info",
-                message="Encoding image to base64",
-                user_id=None,
-                traceback=None,
-            )
-            image_base64 = base64.b64encode(image_bytes).decode("utf-8")
-            log_json(
-                source="ocr",
-                level="info",
-                message=f"Base64 encoded, length: {len(image_base64)}",
-                user_id=None,
-                traceback=None,
-            )
-            message = HumanMessage(
-                content=[
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": f"data:image/png;base64,{image_base64}"}
-                ]
-            )
-            log_json(
-                source="ocr",
-                level="info",
-                message="Calling Gemini Vision API with base64",
-                user_id=None,
-                traceback=None,
-            )
-            response = await vision_llm.ainvoke([message])
-            log_json(
-                source="ocr",
-                level="info",
-                message=f"OCR completed with base64 fallback, extracted {len(response.content)} characters",
-                user_id=None,
-                traceback=None,
-            )
-            return response.content.strip()
-        except Exception as e2:
-            import traceback as tb
-            log_json(
-                source="ocr",
-                level="error",
-                message=f"Both methods failed. Base64 error: {e2!s}",
-                user_id=None,
-                traceback=tb.format_exc(),
-            )
-            raise HTTPException(status_code=500, detail=f"OCR failed: {str(e2)}")
 
 
 @router.post("/upload")
@@ -423,35 +247,21 @@ async def upload_problem_image(
 
 
 def _normalize_embedding(values: list[float]) -> list[float]:
-    """Normalize embedding to unit length for cosine / inner-product similarity."""
-    import math
-    norm = math.sqrt(sum(x * x for x in values))
-    if norm <= 0:
-        return values
-    return [x / norm for x in values]
+    """
+    Backwards-compatible wrapper for embedding normalization.
+
+    Kept to avoid changing internal call sites; implementation lives in features module.
+    """
+    return normalize_embedding(values)
 
 
 def _embed_query(text: str) -> list[float]:
-    """Embed a single query string with Gemini (1024-dim, RETRIEVAL_QUERY, normalized)."""
-    from google import genai
-    from google.genai import types
+    """
+    Backwards-compatible wrapper for query embeddings.
 
-    if not settings.google_api_key:
-        raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not found")
-
-    client = genai.Client(api_key=settings.google_api_key)
-    result = client.models.embed_content(
-        model="gemini-embedding-001",
-        contents=[text],
-        config=types.EmbedContentConfig(
-            output_dimensionality=1024,
-            task_type="RETRIEVAL_QUERY",
-        ),
-    )
-    if not result.embeddings or len(result.embeddings) == 0:
-        raise HTTPException(status_code=500, detail="Embedding returned no result")
-    vals = list(result.embeddings[0].values)
-    return _normalize_embedding(vals)
+    Kept to avoid changing internal call sites; implementation lives in features module.
+    """
+    return embed_query(text)
 
 
 @router.post("/suggest-problem", response_model=SuggestProblemResponse)
@@ -523,7 +333,7 @@ async def suggest_problem(
 
 
 def _make_detect_intent(llm):
-    """Factory: Node 1 - Detect user intent (uses injected llm)."""
+    """DEPRECATED: kept temporarily; use features/solve_problem/graph.py."""
 
     async def detect_intent(state: ProblemSolvingState) -> ProblemSolvingState:
         log_json(
@@ -1252,54 +1062,12 @@ def route_after_progress_intent(state: ProblemSolvingState) -> str:
 
 
 def build_problem_solving_graph(llm):
-    """Build the problem solving state graph with injected LLM."""
-    workflow = StateGraph(ProblemSolvingState)
+    """
+    Backwards-compatible wrapper for the solve-problem LangGraph builder.
 
-    # Add nodes (each node is created with the injected llm)
-    workflow.add_node("detect_intent", _make_detect_intent(llm))
-    workflow.add_node("provide_hint", _make_provide_hint(llm))
-    workflow.add_node("evaluate_progress", _make_evaluate_progress(llm))
-    workflow.add_node("detect_progress_intent", _make_detect_progress_intent(llm))
-    workflow.add_node("explain_error", _make_explain_error(llm))
-    workflow.add_node("provide_solution", _make_provide_solution(llm))
-    
-    # Set entry point
-    workflow.set_entry_point("detect_intent")
-    
-    # Add conditional edges
-    workflow.add_conditional_edges(
-        "detect_intent",
-        route_after_intent,
-        {
-            "provide_solution": "provide_solution",
-            "provide_hint": "provide_hint",
-            "evaluate_progress": "evaluate_progress",
-        }
-    )
-    
-    workflow.add_conditional_edges(
-        "evaluate_progress",
-        route_after_progress_eval,
-        {
-            "detect_progress_intent": "detect_progress_intent",
-        }
-    )
-    
-    workflow.add_conditional_edges(
-        "detect_progress_intent",
-        route_after_progress_intent,
-        {
-            "explain_error": "explain_error",
-            "provide_hint": "provide_hint",
-        }
-    )
-    
-    # Terminal nodes
-    workflow.add_edge("provide_solution", END)
-    workflow.add_edge("provide_hint", END)
-    workflow.add_edge("explain_error", END)
-    
-    return workflow.compile()
+    The implementation lives in `ai_backend.features.solve_problem.graph`.
+    """
+    return build_problem_solving_graph_impl(llm)
 
 
 @router.post("/stream")
@@ -1337,10 +1105,9 @@ async def solve_problem_stream(
 
             async def quota_limit_stream():
                 for char in QUOTA_LIMIT_MESSAGE:
-                    content = char.replace("\n", "\\n")
-                    yield f"data: {content}\n\n"
+                    yield sse_data_line(escape_sse_data(char))
                     await asyncio.sleep(0.01)
-                yield "data: [DONE]\n\n"
+                yield emit_done()
 
             return StreamingResponse(
                 quota_limit_stream(),
@@ -1359,11 +1126,12 @@ async def solve_problem_stream(
 
             # Prefer loading history from Supabase by conversation_id when provided,
             # fall back to the history array from the client for backwards compatibility.
-            history = request.history
-            if request.conversation_id is not None:
-                loaded = load_conversation_history_for_user(user_id, request.conversation_id, supabase)
-                if loaded:
-                    history = loaded
+            history = resolve_effective_history(
+                user_id=user_id,
+                request_history=request.history,
+                conversation_id=request.conversation_id,
+                supabase_client=supabase,
+            )
             log_json(
                 source="solve_problem_stream",
                 level="info",
@@ -1455,19 +1223,16 @@ async def solve_problem_stream(
                     continue
                 # Content chunk
                 if first_content_chunk:
-                    time_to_first_token = time.time() - start_time
-                    metadata = json.dumps({"ttft": round(time_to_first_token, 3)})
                     log_json(
                         source="solve_problem_stream",
                         level="info",
-                        message=f"Time to first token: {time_to_first_token:.3f}s",
+                        message="Time to first token (meta emitted)",
                         user_id=user_id,
                         traceback=None,
                     )
-                    yield f"data: [META]{metadata}\n\n"
+                    yield emit_meta_ttft(start_time)
                     first_content_chunk = False
-                content = item.replace("\n", "\\n")
-                yield f"data: {content}\n\n"
+                yield sse_data_line(escape_sse_data(item))
 
             await invoke_task
             log_json(
@@ -1486,7 +1251,7 @@ async def solve_problem_stream(
                 user_id=user_id,
                 traceback=None,
             )
-            yield "data: [DONE]\n\n"
+            yield emit_done()
             
         except Exception as e:
             import traceback as tb
@@ -1499,8 +1264,8 @@ async def solve_problem_stream(
                 traceback=error_trace,
             )
             error_message = f"Eroare: {str(e)}"
-            yield f"data: {error_message}\n\n"
-            yield "data: [DONE]\n\n"
+            yield sse_data_line(error_message)
+            yield emit_done()
     
     return StreamingResponse(
         generate(),

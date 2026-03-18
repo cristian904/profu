@@ -12,6 +12,11 @@ client = TestClient(app)
 
 class TestStreamingIntegration:
     """Integration tests for SSE streaming (Clarify Once mode)."""
+
+    async def _fake_astream(self, chunks):
+        """Helper async generator for mocking llm.astream."""
+        for c in chunks:
+            yield c
     
     @patch('ai_backend.routers.clarify_once.get_llm')
     def test_stream_response_format(self, mock_get_llm):
@@ -21,7 +26,7 @@ class TestStreamingIntegration:
         mock_chunk.content = "Test response"
         
         mock_llm = AsyncMock()
-        mock_llm.astream = AsyncMock(return_value=iter([mock_chunk]))
+        mock_llm.astream = AsyncMock(return_value=self._fake_astream([mock_chunk]))
         mock_get_llm.return_value = mock_llm
         
         response = client.post(
@@ -41,7 +46,7 @@ class TestStreamingIntegration:
         mock_chunk.content = "Response"
         
         mock_llm = AsyncMock()
-        mock_llm.astream = AsyncMock(return_value=iter([mock_chunk]))
+        mock_llm.astream = AsyncMock(return_value=self._fake_astream([mock_chunk]))
         mock_get_llm.return_value = mock_llm
         
         response = client.post(
@@ -61,7 +66,7 @@ class TestStreamingIntegration:
         mock_chunk_valid.content = "Valid"
         
         mock_llm = AsyncMock()
-        mock_llm.astream = AsyncMock(return_value=iter([mock_chunk_empty, mock_chunk_valid]))
+        mock_llm.astream = AsyncMock(return_value=self._fake_astream([mock_chunk_empty, mock_chunk_valid]))
         mock_get_llm.return_value = mock_llm
         
         response = client.post(
@@ -70,6 +75,52 @@ class TestStreamingIntegration:
         )
         
         assert response.status_code == 200
+
+    @patch('ai_backend.routers.clarify_once.get_llm')
+    def test_stream_includes_meta_ttft(self, mock_get_llm):
+        """Test that streaming includes [META]{ttft} before first token."""
+        mock_chunk = AsyncMock()
+        mock_chunk.content = "Hello"
+
+        mock_llm = AsyncMock()
+        mock_llm.astream = AsyncMock(return_value=self._fake_astream([mock_chunk]))
+        mock_get_llm.return_value = mock_llm
+
+        response = client.post("/clarify/once-stream", json={"query": "Test"})
+        assert response.status_code == 200
+        assert "data: [META]" in response.text
+
+
+class TestStepByStepIntegration:
+    """Integration tests for SSE streaming (Clarify Step-by-Step mode)."""
+
+    async def _fake_astream(self, chunks):
+        """Helper async generator for mocking llm.astream."""
+        for c in chunks:
+            yield c
+
+    @patch('ai_backend.routers.clarify_with_steps.get_llm')
+    def test_step_by_step_followup_includes_meta_and_done(self, mock_get_llm):
+        """Test follow-up path emits [META] and [DONE]."""
+        mock_chunk = AsyncMock()
+        mock_chunk.content = "Răspuns\ncu newline"
+
+        mock_llm = AsyncMock()
+        mock_llm.astream = AsyncMock(return_value=self._fake_astream([mock_chunk]))
+        mock_get_llm.return_value = mock_llm
+
+        response = client.post(
+            "/clarify/step-by-step-stream",
+            json={
+                "query": "Follow-up",
+                "history": [{"role": "user", "content": "Start"}],
+            },
+        )
+        assert response.status_code == 200
+        body = response.text
+        assert "data: [META]" in body
+        assert "data: [DONE]" in body
+        assert "\\n" in body
 
 
 class TestErrorHandling:
