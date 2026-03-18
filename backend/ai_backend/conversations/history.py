@@ -7,8 +7,10 @@ Centralizes the logic that prefers Supabase conversation history when a conversa
 from typing import Any, Optional
 from uuid import UUID
 
-from ai_backend.log_utils import log_json
+from ai_backend.logging.feature_logger import get_feature_logger
 from ai_backend.routers.common import Message, load_conversation_history_for_user
+
+LOG_SUPABASE = get_feature_logger(source="supabase")
 
 
 def resolve_effective_history(
@@ -44,12 +46,6 @@ def resolve_effective_history(
 
         return request_history
     except Exception as e:
-        log_json(
-            source="supabase",
-            level="warning",
-            message=f"Failed to resolve effective history: {e!s}",
-            user_id=user_id,
-            traceback=None,
-        )
+        LOG_SUPABASE.warning(f"Failed to resolve effective history: {e!s}", user_id=user_id)
         return request_history
 

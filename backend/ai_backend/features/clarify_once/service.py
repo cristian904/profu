@@ -12,9 +12,11 @@ from uuid import UUID
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from ai_backend.conversations.history import resolve_effective_history
-from ai_backend.log_utils import log_json
+from ai_backend.logging.feature_logger import get_feature_logger
 from ai_backend.routers.common import Message, PROMPTS
 from ai_backend.streaming.sse import emit_done, emit_meta_ttft, escape_sse_data, sse_data_line
+
+LOG = get_feature_logger(source="clarify_once")
 
 
 async def stream_clarify_once(
@@ -41,21 +43,9 @@ async def stream_clarify_once(
         SSE-formatted strings (`data: ...\\n\\n`).
     """
     try:
-        log_json(
-            source="clarify_once",
-            level="info",
-            message="Stream started",
-            user_id=user_id,
-            traceback=None,
-        )
+        LOG.info("Stream started", user_id=user_id)
         if not request_query or not request_query.strip():
-            log_json(
-                source="clarify_once",
-                level="warning",
-                message="Empty query rejected",
-                user_id=user_id,
-                traceback=None,
-            )
+            LOG.warning("Empty query rejected", user_id=user_id)
             yield sse_data_line("Eroare: Întrebarea nu poate fi goală.")
             yield emit_done()
             return
@@ -95,13 +85,7 @@ async def stream_clarify_once(
     except Exception as e:
         import traceback as tb
 
-        log_json(
-            source="clarify_once",
-            level="error",
-            message=str(e),
-            user_id=user_id,
-            traceback=tb.format_exc(),
-        )
+        LOG.error(str(e), user_id=user_id, traceback=tb.format_exc())
         yield sse_data_line(f"Eroare: {str(e)}")
         yield emit_done()
 

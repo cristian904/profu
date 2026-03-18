@@ -12,11 +12,13 @@ from uuid import UUID
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from ai_backend.conversations.history import resolve_effective_history
-from ai_backend.log_utils import log_json
+from ai_backend.logging.feature_logger import get_feature_logger
 from ai_backend.routers.common import Message, PROMPTS
 from ai_backend.streaming.sse import emit_done, emit_meta_ttft, emit_thinking, escape_sse_data, sse_data_line
 
 from .graph import StepByStepLearningState, build_step_by_step_learning_graph
+
+LOG = get_feature_logger(source="clarify_step_by_step")
 
 
 async def stream_clarify_step_by_step(
@@ -34,13 +36,7 @@ async def stream_clarify_step_by_step(
     Keeps the existing wire format: [META]TTFT, optional [THINKING], escaped newlines, [DONE].
     """
     try:
-        log_json(
-            source="clarify_step_by_step",
-            level="info",
-            message="Stream started",
-            user_id=user_id,
-            traceback=None,
-        )
+        LOG.info("Stream started", user_id=user_id)
         start_time = time.time()
         first_token_received = False
 
@@ -116,13 +112,7 @@ async def stream_clarify_step_by_step(
     except Exception as e:
         import traceback as tb
 
-        log_json(
-            source="clarify_step_by_step",
-            level="error",
-            message=str(e),
-            user_id=user_id,
-            traceback=tb.format_exc(),
-        )
+        LOG.error(str(e), user_id=user_id, traceback=tb.format_exc())
         yield sse_data_line(f"Eroare: {str(e)}")
         yield emit_done()
 

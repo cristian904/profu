@@ -3,6 +3,7 @@ Central JSON logging for ai_backend.
 Every log line is a single JSON object with source, location, level, message, user_id, traceback.
 Includes colored terminal formatting (level + message value highlight) when output is a TTY.
 """
+
 import datetime
 import inspect
 import json
@@ -41,7 +42,7 @@ def _highlight_message_value(json_str: str) -> str:
     Handles escaped quotes inside the value. Returns original string on any failure.
     """
     try:
-        key = '"message"'
+        key = "\"message\""
         idx = json_str.find(key)
         if idx == -1:
             return json_str
@@ -49,7 +50,7 @@ def _highlight_message_value(json_str: str) -> str:
         after_key = idx + len(key)
         while after_key < len(json_str) and json_str[after_key] in ": \t":
             after_key += 1
-        if after_key >= len(json_str) or json_str[after_key] != '"':
+        if after_key >= len(json_str) or json_str[after_key] != "\"":
             return json_str
         value_start = after_key + 1  # first char of value (after opening ")
         # Find closing quote, respecting \"
@@ -58,7 +59,7 @@ def _highlight_message_value(json_str: str) -> str:
             if json_str[i] == "\\" and i + 1 < len(json_str):
                 i += 2
                 continue
-            if json_str[i] == '"':
+            if json_str[i] == "\"":
                 value_end = i  # exclusive end of value
                 return (
                     json_str[:value_start]
@@ -80,14 +81,14 @@ def _unescape_traceback_in_json(json_str: str) -> str:
     stays as the value of the key; output is multi-line but still one JSON object.
     """
     try:
-        key = '"traceback"'
+        key = "\"traceback\""
         idx = json_str.find(key)
         if idx == -1:
             return json_str
         after_key = idx + len(key)
         while after_key < len(json_str) and json_str[after_key] in ": \t":
             after_key += 1
-        if after_key >= len(json_str) or json_str[after_key] != '"':
+        if after_key >= len(json_str) or json_str[after_key] != "\"":
             return json_str
         value_start = after_key + 1
         i = value_start
@@ -95,7 +96,7 @@ def _unescape_traceback_in_json(json_str: str) -> str:
             if json_str[i] == "\\" and i + 1 < len(json_str):
                 i += 2
                 continue
-            if json_str[i] == '"':
+            if json_str[i] == "\"":
                 value_end = i
                 # Replace \\n with real newline only inside the traceback value
                 inner = json_str[value_start:value_end]
@@ -137,7 +138,7 @@ def _format_record_with_traceback(
 
 
 class ColoredJsonFormatter(logging.Formatter):
-    """Format log records with colored level and highlighted JSON "message" value when output is a TTY."""
+    """Format log records with colored level and highlighted JSON \"message\" value when output is a TTY."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -162,6 +163,7 @@ class ColoredJsonFormatter(logging.Formatter):
             return f"{color}{_BOLD}{levelname}{_RESET}{rest}"
         return base
 
+
 LogLevel = Literal["info", "warning", "debug", "error"]
 VALID_LEVELS: tuple[LogLevel, ...] = ("info", "warning", "debug", "error")
 
@@ -171,8 +173,8 @@ def _caller_location() -> str:
     try:
         for frame_info in inspect.stack():
             module = frame_info.frame.f_globals.get("__name__", "")
-            # Skip frames inside this module so we get the actual caller (e.g. common.py, clarify_once.py)
-            if module and not module.startswith("ai_backend.log_utils"):
+            # Skip frames inside this module so we get the actual caller
+            if module and not module.startswith("ai_backend.logging.log_utils"):
                 return f"src.backend.{module}"
     except Exception:
         pass
@@ -193,11 +195,8 @@ def log_json(
         source: Feature name (e.g. auth, ocr, clarify_step_by_step).
         level: info, warning, debug, or error.
         message: Description of what is happening; for errors use str(e).
-        user_id: User UUID when known; None when unknown (e.g. before auth).
-        traceback: Full traceback string only when level is "error"; otherwise None.
-
-    Log line format: one JSON object per line. "location" is set automatically to the
-    calling module path (e.g. src.backend.ai_backend.routers.common).
+        user_id: User UUID when known; None when unknown.
+        traceback: Full traceback string only when level is \"error\"; otherwise None.
     """
     if level not in VALID_LEVELS:
         try:
@@ -210,7 +209,7 @@ def log_json(
             pass
         level = "info"
 
-    # Per SKILL: traceback only for errors; otherwise null
+    # Traceback only for errors; otherwise null
     tb_value: Optional[str] = traceback if level == "error" else None
 
     payload = {
@@ -230,7 +229,7 @@ def log_json(
             fallback = json.dumps(
                 {
                     "source": "log_utils",
-                    "location": "src.backend.ai_backend.log_utils",
+                    "location": "src.backend.ai_backend.logging.log_utils",
                     "level": "error",
                     "message": f"JSON serialization failed: {e!s}",
                     "user_id": None,
@@ -261,3 +260,4 @@ def log_json(
             )
         except Exception:
             pass
+

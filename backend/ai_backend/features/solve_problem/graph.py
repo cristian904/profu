@@ -11,9 +11,11 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, System
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 
-from ai_backend.log_utils import log_json
+from ai_backend.logging.feature_logger import get_feature_logger
 from ai_backend.parsing.json_extract import extract_json_from_text
 from ai_backend.routers.common import PROMPTS
+
+LOG = get_feature_logger(source="solve_problem_langgraph")
 
 
 class ProblemSolvingState(TypedDict):
@@ -51,24 +53,18 @@ def _make_detect_intent(llm: Any):
     """
 
     async def detect_intent(state: ProblemSolvingState) -> ProblemSolvingState:
-        log_json(
-            source="solve_problem_langgraph",
-            level="info",
-            message=f"Node 1: detect_intent. Messages in state: {len(state.get('messages', []))}",
+        LOG.info(
+            f"Node 1: detect_intent. Messages in state: {len(state.get('messages', []))}",
             user_id=user_id_from_state(state),
-            traceback=None,
         )
         messages_list = state.get("messages", [])
 
         if len(messages_list) == 1 and isinstance(messages_list[0], HumanMessage):
             user_message = (messages_list[0].content or "").lower()
             if "încărcat" in user_message or "problem" in user_message or len(user_message) < 50:
-                log_json(
-                    source="solve_problem_langgraph",
-                    level="info",
-                    message="Initial message detected - returning initial question",
+                LOG.info(
+                    "Initial message detected - returning initial question",
                     user_id=user_id_from_state(state),
-                    traceback=None,
                 )
                 problem_text = state.get("problem_text", "")
                 if problem_text:
@@ -125,13 +121,7 @@ def _make_provide_hint(llm: Any):
     async def provide_hint(state: ProblemSolvingState, config: dict | None = None) -> ProblemSolvingState:
         config = config or {}
         stream_queue = config.get("configurable", {}).get("stream_queue")
-        log_json(
-            source="solve_problem_langgraph",
-            level="info",
-            message="Node 2: provide_hint",
-            user_id=user_id_from_state(state),
-            traceback=None,
-        )
+        LOG.info("Node 2: provide_hint", user_id=user_id_from_state(state))
 
         if state.get("intent") == "initial_question" and state.get("messages"):
             if stream_queue is not None:

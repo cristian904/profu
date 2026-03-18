@@ -14,9 +14,9 @@ import asyncio
 import time
 
 from ai_backend.config import settings
-from ai_backend.log_utils import log_json
 from ai_backend.conversations.history import resolve_effective_history
 from ai_backend.parsing.json_extract import extract_json_from_text
+from ai_backend.logging.feature_logger import get_feature_logger
 from ai_backend.streaming.sse import emit_done, emit_meta_ttft, escape_sse_data, sse_data_line
 from ai_backend.features.solve_problem.ocr import perform_ocr
 from ai_backend.features.solve_problem.embeddings import embed_query, normalize_embedding
@@ -42,6 +42,10 @@ QUOTA_LIMIT_MESSAGE = (
 )
 
 router = APIRouter(prefix="/solve-problem", tags=["solve_problem"])
+
+LOG_SOLVE_UPLOAD = get_feature_logger(source="solve_problem_upload")
+LOG_SOLVE_STREAM = get_feature_logger(source="solve_problem_stream")
+LOG_SOLVE_SUGGEST = get_feature_logger(source="solve_problem_suggest")
 
 
 def _user_id_from_state(state: ProblemSolvingState) -> Optional[UUID]:
@@ -86,12 +90,9 @@ async def upload_problem_image(
     Returns the extracted problem text.
     Requires Authorization: Bearer <Supabase JWT>. Enforces monthly solve quota before OCR.
     """
-    log_json(
-        source="solve_problem_upload",
-        level="info",
-        message=f"Upload request received. Filename: {file.filename}, Content-Type: {file.content_type}",
+    LOG_SOLVE_UPLOAD.info(
+        f"Upload request received. Filename: {file.filename}, Content-Type: {file.content_type}",
         user_id=user_id,
-        traceback=None,
     )
     
     # Auth and quota check before any file read or OCR
@@ -99,12 +100,9 @@ async def upload_problem_image(
     if threshold > 0:
         count = get_solve_quota_count(user_id, supabase)
         if count >= threshold:
-            log_json(
-                source="solve_problem_upload",
-                level="info",
-                message=f"Quota exceeded: user={user_id} count={count} threshold={threshold}",
+            LOG_SOLVE_UPLOAD.info(
+                f"Quota exceeded: user={user_id} count={count} threshold={threshold}",
                 user_id=user_id,
-                traceback=None,
             )
             raise HTTPException(
                 status_code=403,
@@ -113,32 +111,14 @@ async def upload_problem_image(
     
     try:
         # Read image bytes first (before validation, to ensure we can read it)
-        log_json(
-            source="solve_problem_upload",
-            level="info",
-            message="Reading file bytes...",
-            user_id=user_id,
-            traceback=None,
-        )
+        LOG_SOLVE_UPLOAD.info("Reading file bytes...", user_id=user_id)
         image_bytes = await file.read()
         
         if len(image_bytes) == 0:
-            log_json(
-                source="solve_problem_upload",
-                level="error",
-                message="File is empty",
-                user_id=user_id,
-                traceback=None,
-            )
+            LOG_SOLVE_UPLOAD.error("File is empty", user_id=user_id, traceback=None)
             raise HTTPException(status_code=400, detail="Uploaded file is empty")
         
-        log_json(
-            source="solve_problem_upload",
-            level="info",
-            message=f"Read {len(image_bytes)} bytes from file",
-            user_id=user_id,
-            traceback=None,
-        )
+        LOG_SOLVE_UPLOAD.info(f"Read {len(image_bytes)} bytes from file", user_id=user_id)
         
         # Validate file is an image - check content_type first, but fall back to file extension
         # Be lenient - accept if either content_type OR file extension indicates it's an image
@@ -149,13 +129,7 @@ async def upload_problem_image(
         if file.content_type and file.content_type.startswith("image/"):
             is_valid_image = True
             validation_method = f"content_type: {file.content_type}"
-            log_json(
-                source="solve_problem_upload",
-                level="info",
-                message=f"Validated by {validation_method}",
-                user_id=user_id,
-                traceback=None,
-            )
+            LOG_SOLVE_UPLOAD.info(f"Validated by {validation_method}", user_id=user_id)
         elif file.filename:
             # If content_type doesn't indicate image, check file extension
             valid_extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}
@@ -163,29 +137,14 @@ async def upload_problem_image(
             if f".{file_ext}" in valid_extensions:
                 is_valid_image = True
                 validation_method = f"file extension: .{file_ext}"
-                log_json(
-                    source="solve_problem_upload",
-                    level="info",
-                    message=f"Validated by {validation_method}",
-                    user_id=user_id,
-                    traceback=None,
-                )
+                LOG_SOLVE_UPLOAD.info(f"Validated by {validation_method}", user_id=user_id)
                 if file.content_type:
-                    log_json(
-                        source="solve_problem_upload",
-                        level="info",
-                        message=f"Note: content_type was {file.content_type}, but file extension is valid",
+                    LOG_SOLVE_UPLOAD.info(
+                        f"Note: content_type was {file.content_type}, but file extension is valid",
                         user_id=user_id,
-                        traceback=None,
                     )
             else:
-                log_json(
-                    source="solve_problem_upload",
-                    level="warning",
-                    message=f"File extension not recognized: .{file_ext}",
-                    user_id=user_id,
-                    traceback=None,
-                )
+                LOG_SOLVE_UPLOAD.warning(f"File extension not recognized: .{file_ext}", user_id=user_id)
         
         if not is_valid_image:
             # Only reject if we can't validate it as an image by either method
@@ -332,156 +291,10 @@ async def suggest_problem(
     return SuggestProblemResponse(message=message, problems=problems)
 
 
-def _make_detect_intent(llm):
-    """DEPRECATED: kept temporarily; use features/solve_problem/graph.py."""
-
-    async def detect_intent(state: ProblemSolvingState) -> ProblemSolvingState:
-        log_json(
-            source="solve_problem_langgraph",
-            level="info",
-            message=f"Node 1: detect_intent. Messages in state: {len(state.get('messages', []))}",
-            user_id=_user_id_from_state(state),
-            traceback=None,
-        )
-        messages_list = state.get("messages", [])
-
-        # Check if this is the first user message (initial upload message)
-        # We check if there's exactly one HumanMessage and it's likely the initial "Am încărcat problema" message
-        if len(messages_list) == 1 and isinstance(messages_list[0], HumanMessage):
-            user_message = messages_list[0].content.lower()
-            # Check if it's the initial message pattern
-            if "încărcat" in user_message or "problem" in user_message or len(user_message) < 50:
-                log_json(
-                    source="solve_problem_langgraph",
-                    level="info",
-                    message="Initial message detected - returning initial question",
-                    user_id=_user_id_from_state(state),
-                    traceback=None,
-                )
-                problem_text = state.get("problem_text", "")
-                if problem_text:
-                    initial_message = AIMessage(
-                        content=f"Pare o problemă interesantă!\n\n**Problema:**\n{problem_text}\n\nAi vrea o rezolvare completă sau un hint?"
-                    )
-                else:
-                    initial_message = AIMessage(
-                        content="Pare o problemă interesantă! Ai vrea o rezolvare completă sau un hint?"
-                    )
-                log_json(
-                    source="solve_problem_langgraph",
-                    level="info",
-                    message="Returning initial_question intent",
-                    user_id=_user_id_from_state(state),
-                    traceback=None,
-                )
-                new_state = {
-                    **state,
-                    "intent": "initial_question",
-                }
-                new_state["messages"] = [initial_message]
-                return new_state
-
-        log_json(
-            source="solve_problem_langgraph",
-            level="info",
-            message="Not initial message - detecting intent from user message",
-            user_id=_user_id_from_state(state),
-            traceback=None,
-        )
-
-        system_prompt = PROMPTS['problem_solving']['intent_detector']['system_prompt']
-
-        # Build conversation context
-        messages = [SystemMessage(content=system_prompt)]
-
-        # Add conversation history
-        if state.get("messages"):
-            messages.extend(state["messages"][-10:])
-            log_json(
-                source="solve_problem_langgraph",
-                level="info",
-                message=f"Added {len(state['messages'][-10:])} messages to context",
-                user_id=_user_id_from_state(state),
-                traceback=None,
-            )
-
-        # Add current query if available
-        if state.get("messages") and len(state["messages"]) > 0:
-            last_message = state["messages"][-1]
-            if isinstance(last_message, HumanMessage):
-                log_json(
-                    source="solve_problem_langgraph",
-                    level="info",
-                    message=f"Last user message: {last_message.content[:50]}...",
-                    user_id=_user_id_from_state(state),
-                    traceback=None,
-                )
-                messages.append(HumanMessage(content=f"Mesajul elevului: {last_message.content}"))
-
-        log_json(
-            source="solve_problem_langgraph",
-            level="info",
-            message="Calling LLM for intent detection...",
-            user_id=_user_id_from_state(state),
-            traceback=None,
-        )
-        response = await llm.ainvoke(messages)
-        log_json(
-            source="solve_problem_langgraph",
-            level="info",
-            message=f"LLM response received: {response.content[:100]}...",
-            user_id=_user_id_from_state(state),
-            traceback=None,
-        )
-
-        # Extract intent from response
-        try:
-            result = extract_json_from_text(response.content)
-            intent = result.get("intent", "new_hint")
-            log_json(
-                source="solve_problem_langgraph",
-                level="info",
-                message=f"Intent extracted from JSON: {intent}",
-                user_id=_user_id_from_state(state),
-                traceback=None,
-            )
-        except Exception:
-            log_json(
-                source="solve_problem_langgraph",
-                level="warning",
-                message="Failed to extract JSON, using keyword detection",
-                user_id=_user_id_from_state(state),
-                traceback=None,
-            )
-            content_lower = response.content.lower()
-            if any(word in content_lower for word in ["solve", "soluție", "completă", "arătă"]):
-                intent = "solve"
-            elif any(word in content_lower for word in ["progres", "rezolvat", "făcut"]):
-                intent = "progress"
-            else:
-                intent = "new_hint"
-            log_json(
-                source="solve_problem_langgraph",
-                level="info",
-                message=f"Intent detected via keywords: {intent}",
-                user_id=_user_id_from_state(state),
-                traceback=None,
-            )
-
-        log_json(
-            source="solve_problem_langgraph",
-            level="info",
-            message=f"Node 1 complete: intent={intent}",
-            user_id=_user_id_from_state(state),
-            traceback=None,
-        )
-        return {
-            **state,
-            "intent": intent,
-            "messages": [response] if state.get('messages') else []
-        }
-
-    return detect_intent
+"""
+NOTE: The previous (router-local) LangGraph implementation was removed.
+The active implementation lives in `ai_backend.features.solve_problem.graph`.
+"""
 
 
 def _make_provide_hint(llm):

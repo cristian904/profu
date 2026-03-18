@@ -14,7 +14,11 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel
 
 from ai_backend.config import settings
-from ai_backend.log_utils import log_json
+from ai_backend.logging.feature_logger import get_feature_logger
+
+# Feature-scoped loggers (preserve `source` values)
+LOG_AUTH = get_feature_logger(source="auth")
+LOG_SUPABASE = get_feature_logger(source="supabase")
 
 # JWKS client for asymmetric Supabase tokens (RS256 / ES256)
 _jwks_client: PyJWKClient | None = None
@@ -37,29 +41,17 @@ def ensure_jwks_prefetch() -> None:
         # Prefetch and cache the key set so first user request doesn't fetch
         if hasattr(_jwks_client, "get_signing_keys"):
             _jwks_client.get_signing_keys(refresh=True)
-        log_json(
-            source="auth",
-            level="info",
-            message=f"JWKS prefetched from {jwks_url}",
-            user_id=None,
-            traceback=None,
-        )
+        LOG_AUTH.info(f"JWKS prefetched from {jwks_url}", user_id=None)
     except Exception as e:
-        log_json(
-            source="auth",
-            level="warning",
-            message=f"JWKS prefetch failed (first request will fetch): {e!s} (url={jwks_url})",
+        LOG_AUTH.warning(
+            f"JWKS prefetch failed (first request will fetch): {e!s} (url={jwks_url})",
             user_id=None,
-            traceback=None,
         )
         # Hint when Supabase is likely local and not running
         if "127.0.0.1" in jwks_url or "localhost" in jwks_url:
-            log_json(
-                source="auth",
-                level="info",
-                message="If using local Supabase, ensure it is running (e.g. npx supabase start).",
+            LOG_AUTH.info(
+                "If using local Supabase, ensure it is running (e.g. npx supabase start).",
                 user_id=None,
-                traceback=None,
             )
         if _jwks_client is None:
             try:
@@ -105,26 +97,14 @@ def get_user_id_from_request(request: Request) -> UUID:
     """
     auth = request.headers.get("Authorization")
     if not auth or not auth.startswith("Bearer "):
-        log_json(
-            source="auth",
-            level="info",
-            message="401: Missing or invalid Authorization header",
-            user_id=None,
-            traceback=None,
-        )
+        LOG_AUTH.info("401: Missing or invalid Authorization header", user_id=None)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid Authorization header (expected Bearer token)",
         )
     token = auth[7:].strip()
     if not token:
-        log_json(
-            source="auth",
-            level="info",
-            message="401: Bearer token is empty",
-            user_id=None,
-            traceback=None,
-        )
+        LOG_AUTH.info("401: Bearer token is empty", user_id=None)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing or invalid Authorization header (expected Bearer token)",
@@ -138,21 +118,9 @@ def get_user_id_from_request(request: Request) -> UUID:
     try:
         unverified = jwt.get_unverified_header(token)
         alg = unverified.get("alg")
-        log_json(
-            source="auth",
-            level="info",
-            message=f"JWT alg={alg}",
-            user_id=None,
-            traceback=None,
-        )
+        LOG_AUTH.info(f"JWT alg={alg}", user_id=None)
     except Exception as e:
-        log_json(
-            source="auth",
-            level="warning",
-            message=f"JWT header decode failed: {e!s}",
-            user_id=None,
-            traceback=None,
-        )
+        LOG_AUTH.warning(f"JWT header decode failed: {e!s}", user_id=None)
         alg = None
 
     # Choose verification strategy based on alg
@@ -178,13 +146,7 @@ def get_user_id_from_request(request: Request) -> UUID:
             verify_key = signing_key.key
             verify_algorithms = [alg]
         else:
-            log_json(
-                source="auth",
-                level="warning",
-                message=f"401: Unsupported JWT alg={alg}",
-                user_id=None,
-                traceback=None,
-            )
+            LOG_AUTH.warning(f"401: Unsupported JWT alg={alg}", user_id=None)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=f"Unsupported token algorithm: {alg}",
@@ -202,13 +164,7 @@ def get_user_id_from_request(request: Request) -> UUID:
             detail="Token expired. Please sign in again.",
         ) from e
     except jwt.InvalidSignatureError as e:
-        log_json(
-            source="auth",
-            level="warning",
-            message="401: Invalid signature (wrong JWT secret?). alg=HS256",
-            user_id=None,
-            traceback=None,
-        )
+        LOG_AUTH.warning("401: Invalid signature (wrong JWT secret?). alg=HS256", user_id=None)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=(
@@ -218,13 +174,7 @@ def get_user_id_from_request(request: Request) -> UUID:
             ),
         ) from e
     except jwt.InvalidTokenError as e:
-        log_json(
-            source="auth",
-            level="warning",
-            message=f"401: Invalid token: {type(e).__name__}",
-            user_id=None,
-            traceback=None,
-        )
+        LOG_AUTH.warning(f"401: Invalid token: {type(e).__name__}", user_id=None)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
@@ -237,13 +187,7 @@ def get_user_id_from_request(request: Request) -> UUID:
         )
     try:
         resolved_user_id = UUID(sub)
-        log_json(
-            source="auth",
-            level="info",
-            message="Auth successful",
-            user_id=resolved_user_id,
-            traceback=None,
-        )
+        LOG_AUTH.info("Auth successful", user_id=resolved_user_id)
         return resolved_user_id
     except ValueError as e:
         raise HTTPException(
@@ -339,11 +283,5 @@ def load_conversation_history_for_user(
             history.append(Message(role=role, content=content))
         return history
     except Exception as e:
-        log_json(
-            source="supabase",
-            level="warning",
-            message=f"Failed to load conversation history from Supabase: {e!s}",
-            user_id=user_id,
-            traceback=None,
-        )
+        LOG_SUPABASE.warning(f"Failed to load conversation history from Supabase: {e!s}", user_id=user_id)
         return []

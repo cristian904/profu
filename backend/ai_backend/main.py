@@ -7,9 +7,14 @@ import logging
 import traceback
 
 from ai_backend.config import settings  # noqa: F401 - load .env via pydantic-settings
-from ai_backend.log_utils import log_json, ColoredJsonFormatter
+from ai_backend.logging.log_utils import ColoredJsonFormatter
+from ai_backend.logging.feature_logger import get_feature_logger
 from ai_backend.routers import clarify_once, clarify_with_steps, solve_problem
 from ai_backend.routers.common import ensure_jwks_prefetch, get_user_id_from_request
+
+# Feature-scoped loggers (preserve `source` values)
+LOG_VALIDATION = get_feature_logger(source="validation")
+LOG_EXCEPTION = get_feature_logger(source="exception")
 
 # Configure JSON logging: level prefix + JSON message (colored when TTY)
 _json_logger = logging.getLogger("ai_backend.json")
@@ -50,12 +55,9 @@ app = FastAPI(
 # Add exception handler for validation errors (422 = Unprocessable Entity, standard for body validation)
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    log_json(
-        source="validation",
-        level="warning",
-        message=f"Path: {request.url.path}, Method: {request.method}, Errors: {exc.errors()}",
+    LOG_VALIDATION.warning(
+        f"Path: {request.url.path}, Method: {request.method}, Errors: {exc.errors()}",
         user_id=None,
-        traceback=None,
     )
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -71,13 +73,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         user_id = get_user_id_from_request(request)
     except Exception:
         pass
-    log_json(
-        source="exception",
-        level="error",
-        message=str(exc),
-        user_id=user_id,
-        traceback=traceback.format_exc(),
-    )
+    LOG_EXCEPTION.error(str(exc), user_id=user_id, traceback=traceback.format_exc())
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"detail": "Internal server error", "message": str(exc)},
