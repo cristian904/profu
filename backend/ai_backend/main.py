@@ -9,7 +9,7 @@ import traceback
 from ai_backend.config import settings  # noqa: F401 - load .env via pydantic-settings
 from ai_backend.logging.log_utils import ColoredJsonFormatter
 from ai_backend.logging.feature_logger import get_feature_logger
-from ai_backend.routers import clarify_once, clarify_with_steps, solve_problem
+from ai_backend.routers import clarify_once, clarify_with_steps, solve_problem, simulari
 from ai_backend.routers.common import ensure_jwks_prefetch, get_user_id_from_request
 
 # Feature-scoped loggers (preserve `source` values)
@@ -92,6 +92,7 @@ app.add_middleware(
 app.include_router(clarify_once.router)
 app.include_router(clarify_with_steps.router)
 app.include_router(solve_problem.router)
+app.include_router(simulari.router)
 
 @app.get("/")
 async def root():

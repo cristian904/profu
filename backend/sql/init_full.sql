@@ -65,18 +65,34 @@ CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_id ON conversa
 CREATE TABLE IF NOT EXISTS exam_simulations (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    -- Optional: direct link to Supabase auth user for RLS-friendly queries
+    auth_user_id UUID,
+    -- School subject for the simulation (e.g. math, informatics)
+    school_subject VARCHAR(100) DEFAULT 'math' NOT NULL,
+    -- Total score given by the student for this simulation (0-100)
+    student_score NUMERIC(5, 2),
     started_at TIMESTAMPTZ DEFAULT NOW(),
     finished_at TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_exam_simulations_user_id ON exam_simulations(user_id);
+CREATE INDEX IF NOT EXISTS idx_exam_simulations_auth_user_id ON exam_simulations(auth_user_id);
+CREATE INDEX IF NOT EXISTS idx_exam_simulations_user_subject_started_at
+    ON exam_simulations(user_id, school_subject, started_at);
 
 -- Problems included in a simulation (many problems per exam)
 CREATE TABLE IF NOT EXISTS exam_simulation_problems (
     id SERIAL PRIMARY KEY,
     exam_simulation_id INTEGER NOT NULL REFERENCES exam_simulations(id) ON DELETE CASCADE,
     exam_problem_id INTEGER NOT NULL REFERENCES exam_problems(id) ON DELETE CASCADE,
+    -- Display order of problems within the simulation
     order_index INTEGER,
+    -- Bac subiect number (1, 2, 3)
+    subject_number INTEGER NOT NULL,
+    -- Problem number within the subiect (e.g. 1..6 for Subiectul I, 1..2 for II/III)
+    problem_number INTEGER NOT NULL,
+    -- Score given by the student for this problem
+    student_score NUMERIC(5, 2),
     UNIQUE(exam_simulation_id, exam_problem_id)
 );
 
@@ -362,5 +378,19 @@ BEGIN
   RETURN cnt;
 END;
 $$;
+
+-- =============================================================================
+-- 7. Helper view for simulation scores history
+-- =============================================================================
+
+CREATE OR REPLACE VIEW public.v_simulation_scores AS
+SELECT
+    s.id AS simulation_id,
+    s.auth_user_id,
+    s.school_subject,
+    s.started_at,
+    s.finished_at,
+    s.student_score
+FROM exam_simulations s;
 
 COMMIT;

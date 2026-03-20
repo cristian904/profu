@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../pages/clarify_chat_page.dart';
+import '../pages/simulation_page.dart';
 import '../pages/solve_problem_page.dart';
 
 class ProfuDrawer extends StatelessWidget {
@@ -19,6 +20,11 @@ class ProfuDrawer extends StatelessWidget {
       Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const SolveProblemPage()),
+      );
+    } else if (option == 'simulation') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const SimulationPage()),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
