@@ -10,11 +10,12 @@ from typing import Any, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ai_backend.logging.feature_logger import get_feature_logger
 from ai_backend.routers.common import get_supabase_client, get_user_id_from_request
 from ai_backend.features.simulation.service import SimulationService
+from ai_backend.utils.exam_timestamps import format_exam_timestamp_for_db
 
 
 router = APIRouter(prefix="/simulari", tags=["simulari"])
@@ -27,7 +28,10 @@ class GenerateSimulationRequest(BaseModel):
     Request body for /simulari/generate endpoint.
     """
 
-    school_subject: str = Field(default="math", description="School subject for the simulation (default: math)")
+    school_subject: str = Field(
+        default="mate",
+        description="School subject for the simulation; DB catalog uses \"mate\" for merged Bac JSONs (default: mate). \"math\" is accepted and matches \"mate\" rows.",
+    )
 
     @field_validator("school_subject")
     @classmethod
@@ -93,10 +97,45 @@ class ProblemScore(BaseModel):
 class SimulationScoringRequest(BaseModel):
     """
     Request body for /simulari/scoring endpoint.
+
+    Send either **problems** (per-subiect punctaje) or **total_score** alone after self-evaluation.
+    If both are set, **problems** wins and **total_score** is ignored.
     """
 
     simulation_id: int = Field(..., description="Identifier of the simulation to score")
-    problems: List[ProblemScore] = Field(..., description="List of per-problem scores")
+    problems: List[ProblemScore] = Field(
+        default_factory=list,
+        description="Per-problem scores (optional if total_score is sent)",
+    )
+    total_score: Optional[float] = Field(
+        default=None,
+        description="Single self-evaluated total (0–100) when not sending per-problem scores",
+    )
+
+    @model_validator(mode="after")
+    def default_total_when_no_problems(self) -> "SimulationScoringRequest":
+        """
+        When [problems] is empty and [total_score] is omitted, treat total as 0 (legacy behaviour).
+        """
+        if self.problems:
+            return self
+        if self.total_score is None:
+            return self.model_copy(update={"total_score": 0.0})
+        return self
+
+    @field_validator("total_score")
+    @classmethod
+    def validate_total_score_range(cls, value: Optional[float]) -> Optional[float]:
+        """
+        Clamp validation for optional total_score (Bac-style scale 0–100).
+        """
+        if value is None:
+            return value
+        if value < 0:
+            raise ValueError("total_score must be >= 0")
+        if value > 100:
+            raise ValueError("total_score must be <= 100")
+        return value
 
 
 class SimulationScoringResponse(BaseModel):
@@ -195,7 +234,7 @@ async def submit_simulation_scoring(
     user_id: UUID = get_user_id_from_request(request)
     LOG_SIMULARI_API.info(
         f"Scoring submitted for simulation_id={body.simulation_id} "
-        f"with {len(body.problems)} problems",
+        f"problems={len(body.problems)} total_only={body.total_score is not None and not body.problems}",
         user_id=user_id,
     )
     if supabase is None:
@@ -226,37 +265,49 @@ async def submit_simulation_scoring(
             detail="You are not allowed to score this simulation",
         )
 
-    # Step 2: update per-problem scores
+    # Step 2: update per-problem scores, or accept a single self-evaluated total
     total_score: float = 0.0
-    for problem in body.problems:
-        update_resp = (
-            supabase.table("exam_simulation_problems")
-            .update({"student_score": problem.student_score})
-            .eq("exam_simulation_id", body.simulation_id)
-            .eq("subject_number", problem.subject_number)
-            .eq("problem_number", problem.problem_number)
-            .execute()
-        )
-        updated_rows = getattr(update_resp, "data", None) or []
-        if not updated_rows:
-            LOG_SIMULARI_API.warning(
-                (
-                    "No matching exam_simulation_problems row when scoring "
-                    f"simulation_id={body.simulation_id}, subiect={problem.subject_number}, "
-                    f"problema={problem.problem_number}"
-                ),
-                user_id=user_id,
+    if body.problems:
+        for problem in body.problems:
+            update_resp = (
+                supabase.table("exam_simulation_problems")
+                .update({"student_score": problem.student_score})
+                .eq("exam_simulation_id", body.simulation_id)
+                .eq("subject_number", problem.subject_number)
+                .eq("problem_number", problem.problem_number)
+                .execute()
             )
-            continue
-        total_score += float(problem.student_score)
+            updated_rows = getattr(update_resp, "data", None) or []
+            if not updated_rows:
+                LOG_SIMULARI_API.warning(
+                    (
+                        "No matching exam_simulation_problems row when scoring "
+                        f"simulation_id={body.simulation_id}, subiect={problem.subject_number}, "
+                        f"problema={problem.problem_number}"
+                    ),
+                    user_id=user_id,
+                )
+                continue
+            total_score += float(problem.student_score)
+    else:
+        total_score = float(body.total_score) if body.total_score is not None else 0.0
+        LOG_SIMULARI_API.info(
+            f"Applying self-evaluated total_score={total_score} for simulation_id={body.simulation_id}",
+            user_id=user_id,
+        )
 
-    # Step 3: persist total score and finished_at
+    # Step 3: persist total score and finished_at (YYYY-MM-DD HH:MM:SS, Europe/Bucharest)
+    finished_str = format_exam_timestamp_for_db()
+    LOG_SIMULARI_API.info(
+        f"exam_simulations.finished_at for id={body.simulation_id} set to {finished_str}",
+        user_id=user_id,
+    )
     _ = (
         supabase.table("exam_simulations")
         .update(
             {
                 "student_score": round(total_score, 2),
-                "finished_at": "now()",
+                "finished_at": finished_str,
             },
         )
         .eq("id", body.simulation_id)

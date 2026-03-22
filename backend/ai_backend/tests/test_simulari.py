@@ -135,3 +135,33 @@ class TestSimulariScoring:
 
         assert response.status_code == 403
 
+    @patch("ai_backend.routers.simulari.get_user_id_from_request")
+    def test_scoring_self_evaluated_total_only(self, mock_get_user_id):
+        """
+        Positive: client may send total_score alone (self-evaluation) without per-problem rows.
+        """
+        fake_user_id = uuid.UUID("00000000-0000-0000-0000-000000000000")
+        mock_get_user_id.return_value = fake_user_id
+
+        supabase_mock = MagicMock()
+        app.dependency_overrides[simulari.get_supabase_client] = lambda: supabase_mock
+
+        supabase_mock.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [
+            {"id": 11, "auth_user_id": str(fake_user_id)}
+        ]
+
+        response = client.post(
+            "/simulari/scoring",
+            json={
+                "simulation_id": 11,
+                "total_score": 73.5,
+            },
+        )
+
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["simulation_id"] == 11
+        assert data["total_score"] == 73.5
+

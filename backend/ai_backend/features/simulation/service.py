@@ -13,9 +13,31 @@ from uuid import UUID
 from supabase import Client
 
 from ai_backend.logging.feature_logger import get_feature_logger
+from ai_backend.utils.exam_timestamps import format_exam_timestamp_for_db
 
 
 LOG_SIMULARI = get_feature_logger(source="simulari")
+
+
+def _school_subject_db_values(school_subject: str) -> List[str]:
+    """
+    Map API/UI subject labels to values stored in exam_problems.school_subject.
+
+    Merged exam JSONs use Romanian labels (e.g. \"mate\"); clients may send \"math\".
+    Returns a deduplicated list for PostgREST `in` filters.
+    """
+    key = (school_subject or "").strip().lower()
+    if not key:
+        return []
+    variants: List[str] = [key]
+    # Romanian Bac data in DB typically uses \"mate\" (see load_merged_to_db merged JSON).
+    if key == "math":
+        if "mate" not in variants:
+            variants.append("mate")
+    elif key == "mate":
+        if "math" not in variants:
+            variants.append("math")
+    return variants
 
 
 @dataclass(frozen=True)
@@ -57,9 +79,17 @@ class SimulationService:
         Returns a list of rows from `exam_problems`. If the list is empty, the caller
         must decide how to handle the absence of candidates.
         """
+        subject_values = _school_subject_db_values(school_subject)
+        if not subject_values:
+            LOG_SIMULARI.warning(
+                f"Empty school_subject after normalization: input={school_subject!r}",
+                user_id=None,
+            )
+            return []
+
         LOG_SIMULARI.info(
             (
-                f"Fetching exam_problems for subject={school_subject}, "
+                f"Fetching exam_problems for school_subject in {subject_values}, "
                 f"subiect={subject_number}, problema={problem_number}"
             ),
             user_id=None,
@@ -67,7 +97,7 @@ class SimulationService:
         response = (
             self._supabase.table("exam_problems")
             .select("id, subject_number, problem_number, school_subject")
-            .eq("school_subject", school_subject)
+            .in_("school_subject", subject_values)
             .eq("subject_number", subject_number)
             .eq("problem_number", problem_number)
             .execute()
@@ -75,7 +105,7 @@ class SimulationService:
         data = getattr(response, "data", None) or []
         LOG_SIMULARI.info(
             (
-                f"Found {len(data)} candidates for subject={school_subject}, "
+                f"Found {len(data)} candidates for school_subject in {subject_values}, "
                 f"subiect={subject_number}, problema={problem_number}"
             ),
             user_id=None,
@@ -93,8 +123,10 @@ class SimulationService:
         """
         if not candidates:
             raise ValueError(
-                f"No exam problem available for subject_number={subject_number}, "
-                f"problem_number={problem_number}",
+                "No exam problem available for "
+                f"subject_number={subject_number}, problem_number={problem_number}. "
+                "Check exam_problems has rows for this slot and that school_subject "
+                "matches (DB often uses \"mate\"; \"math\" is accepted as an alias).",
             )
         chosen = random.choice(candidates)
         LOG_SIMULARI.info(
@@ -193,7 +225,7 @@ class SimulationService:
     def create_simulation(
         self,
         auth_user_id: UUID,
-        school_subject: str = "math",
+        school_subject: str = "mate",
     ) -> int:
         """
         Create a new simulation for the given user and return its id.
@@ -216,14 +248,20 @@ class SimulationService:
             )
             raise
 
+        started_str = format_exam_timestamp_for_db()
+        LOG_SIMULARI.info(
+            f"exam_simulations.started_at will be set to {started_str}",
+            user_id=auth_user_id,
+        )
         sim_payload: Dict[str, Any] = {
             "auth_user_id": str(auth_user_id),
             "school_subject": school_subject,
+            "started_at": started_str,
         }
+        # postgrest 2.x: insert() returns SyncQueryRequestBuilder (execute only; no .select() after insert).
         sim_resp = (
             self._supabase.table("exam_simulations")
             .insert(sim_payload)
-            .select("id")
             .execute()
         )
         sim_rows = getattr(sim_resp, "data", None) or []
