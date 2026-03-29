@@ -16,7 +16,8 @@ import time
 from ai_backend.config import settings
 from ai_backend.conversations.history import resolve_effective_history
 from ai_backend.parsing.json_extract import extract_json_from_text
-from ai_backend.logging.feature_logger import get_feature_logger
+from profu_logging.feature_logger import get_feature_logger
+from profu_logging.log_utils import log_json
 from ai_backend.streaming.sse import emit_done, emit_meta_ttft, escape_sse_data, sse_data_line
 from ai_backend.features.solve_problem.ocr import perform_ocr
 from ai_backend.features.solve_problem.embeddings import embed_query, normalize_embedding

@@ -45,3 +45,6 @@ flutter_app/lib/supabase_rest_config.dart
 # Crawler downloads
 backend/crawler/downloads/
 backend/crawler/downloads_exams/
+
+# Pipeline runs
+backend/exam_parser/runs/

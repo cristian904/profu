@@ -10,7 +10,7 @@ from io import BytesIO
 from fastapi import HTTPException
 
 from ai_backend.config import settings
-from ai_backend.logging.feature_logger import get_feature_logger
+from profu_logging.feature_logger import get_feature_logger
 
 
 async def perform_ocr(image_bytes: bytes) -> str:

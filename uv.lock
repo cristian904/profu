@@ -8,6 +8,7 @@ members = [
     "crawler",
     "exam-parser",
     "profu",
+    "profu-logging",
 ]
 
 [[package]]
@@ -20,6 +21,7 @@ dependencies = [
     { name = "langchain-google-genai" },
     { name = "langgraph" },
     { name = "pillow" },
+    { name = "profu-logging" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyjwt" },
@@ -46,6 +48,7 @@ requires-dist = [
     { name = "langchain-google-genai", specifier = ">=2.0.0" },
     { name = "langgraph", specifier = ">=0.2.0" },
     { name = "pillow", specifier = ">=11.0.0" },
+    { name = "profu-logging", editable = "backend/logging" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pydantic-settings", specifier = ">=2.0.0" },
     { name = "pyjwt", specifier = ">=2.8.0" },
@@ -492,6 +495,8 @@ version = "1.0.0"
 source = { editable = "backend/exam_parser" }
 dependencies = [
     { name = "google-genai" },
+    { name = "profu-logging" },
+    { name = "pydantic-settings" },
     { name = "python-dotenv" },
     { name = "supabase" },
     { name = "tqdm" },
@@ -505,6 +510,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "google-genai", specifier = ">=1.0.0" },
+    { name = "profu-logging", editable = "backend/logging" },
+    { name = "pydantic-settings", specifier = ">=2.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "supabase", specifier = ">=2.0.0" },
@@ -1274,6 +1281,7 @@ dependencies = [
     { name = "crawler" },
     { name = "exam-parser" },
     { name = "poethepoet" },
+    { name = "profu-logging" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1283,8 +1291,14 @@ requires-dist = [
     { name = "crawler", editable = "backend/crawler" },
     { name = "exam-parser", editable = "backend/exam_parser" },
     { name = "poethepoet" },
+    { name = "profu-logging", editable = "backend/logging" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.27.0" },
 ]
+
+[[package]]
+name = "profu-logging"
+version = "1.0.0"
+source = { editable = "backend/logging" }
 
 [[package]]
 name = "propcache"

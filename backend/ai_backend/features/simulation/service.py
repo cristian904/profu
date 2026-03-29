@@ -12,7 +12,7 @@ from uuid import UUID
 
 from supabase import Client
 
-from ai_backend.logging.feature_logger import get_feature_logger
+from profu_logging.feature_logger import get_feature_logger
 from ai_backend.utils.exam_timestamps import format_exam_timestamp_for_db
 
 

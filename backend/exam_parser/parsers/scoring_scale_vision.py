@@ -20,9 +20,10 @@ Output clean, well-formed markdown:
 - **No preamble**: Return only the markdown document, no introduction or commentary."""
 
 
-def parse_scoring_scale_pdf(pdf_path: str | Path) -> str:
+def parse_scoring_scale_pdf(pdf_path: str | Path, model_name: str = "gemini-2.5-flash") -> str:
     """
-    Convert a scoring-scale PDF to markdown using Gemini 2.0 Vision.
+    Convert a scoring scale (barem) PDF to markdown using Gemini Vision.
+    Extracts the solution steps corresponding to s1, s2, s3.
     Returns markdown with structure and LaTeX math ($...$ and $$...$$).
     """
     from google import genai
@@ -39,7 +40,7 @@ def parse_scoring_scale_pdf(pdf_path: str | Path) -> str:
     pdf_bytes = path.read_bytes()
     client = genai.Client(api_key=api_key)
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model=model_name,
         contents=[
             types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
             SCORING_SCALE_EXTRACT_PROMPT,

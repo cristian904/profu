@@ -12,7 +12,7 @@ from uuid import UUID
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from ai_backend.conversations.history import resolve_effective_history
-from ai_backend.logging.feature_logger import get_feature_logger
+from profu_logging.feature_logger import get_feature_logger
 from ai_backend.routers.common import Message, PROMPTS
 from ai_backend.streaming.sse import emit_done, emit_meta_ttft, escape_sse_data, sse_data_line
 

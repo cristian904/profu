@@ -11,7 +11,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, System
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 
-from ai_backend.logging.feature_logger import get_feature_logger
+from profu_logging.feature_logger import get_feature_logger
 from ai_backend.parsing.json_extract import extract_json_from_text
 from ai_backend.routers.common import PROMPTS
 

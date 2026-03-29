@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Optional
 from uuid import UUID
 
-from ai_backend.logging.log_utils import log_json
+from profu_logging.log_utils import log_json
 
 
 @dataclass(frozen=True)

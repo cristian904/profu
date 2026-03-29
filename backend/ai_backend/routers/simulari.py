@@ -12,7 +12,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from ai_backend.logging.feature_logger import get_feature_logger
+from profu_logging.feature_logger import get_feature_logger
 from ai_backend.routers.common import get_supabase_client, get_user_id_from_request
 from ai_backend.features.simulation.service import SimulationService
 from ai_backend.utils.exam_timestamps import format_exam_timestamp_for_db

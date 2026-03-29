@@ -9,15 +9,22 @@ dependencies = [
     "crawler",
     "exam-parser",
     "poethepoet",
+    "profu-logging",
 ]
 
 [tool.uv.sources]
 ai-backend = { workspace = true }
 crawler = { workspace = true }
 exam-parser = { workspace = true }
+profu-logging = { workspace = true }
 
 [tool.uv.workspace]
-members = ["backend/ai_backend", "backend/crawler", "backend/exam_parser"]
+members = [
+    "backend/ai_backend",
+    "backend/crawler",
+    "backend/exam_parser",
+    "backend/logging",
+]
 
 [tool.poe.tasks]
 # Watch only backend/ai_backend so other project writes (logs, Flutter, etc.) don't trigger reload.

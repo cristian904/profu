@@ -7,7 +7,7 @@ Centralizes the logic that prefers Supabase conversation history when a conversa
 from typing import Any, Optional
 from uuid import UUID
 
-from ai_backend.logging.feature_logger import get_feature_logger
+from profu_logging.feature_logger import get_feature_logger
 from ai_backend.routers.common import Message, load_conversation_history_for_user
 
 LOG_SUPABASE = get_feature_logger(source="supabase")

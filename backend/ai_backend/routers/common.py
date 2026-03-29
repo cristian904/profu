@@ -14,7 +14,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel
 
 from ai_backend.config import settings
-from ai_backend.logging.feature_logger import get_feature_logger
+from profu_logging.feature_logger import get_feature_logger
 
 # Feature-scoped loggers (preserve `source` values)
 LOG_AUTH = get_feature_logger(source="auth")
