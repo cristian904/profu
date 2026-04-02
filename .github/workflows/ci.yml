@@ -67,6 +67,11 @@ jobs:
           channel: stable
           cache: true
 
+      # pubspec.yaml lists `.env` as an asset; the real file is gitignored and missing on CI.
+      - name: Placeholder .env for Flutter asset manifest
+        working-directory: flutter_app
+        run: cp .env.example .env
+
       - name: Install Flutter dependencies
         working-directory: flutter_app
         run: flutter pub get
