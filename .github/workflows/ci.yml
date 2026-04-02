@@ -1,5 +1,5 @@
-# CI: runs AI backend (pytest) and Flutter UI (unit + widget) tests. Failures fail
-# the workflow and block PR merge when branch protection is enabled. Require status
+# CI: Ruff on backend/, Dart analyzer + tests on flutter_app/. Failures fail the
+# workflow and block PR merge when branch protection is enabled. Require status
 # check "Build Status Check" in branch protection.
 name: CI
 
@@ -42,6 +42,10 @@ jobs:
         if: steps.cached-venv.outputs.cache-hit != 'true'
         run: uv sync
 
+      # Do not use --fix in CI; only verify (see root pyproject.toml poe task lint for local autofix).
+      - name: Ruff check (Python backend)
+        run: uv run ruff check ./backend
+
       - name: Run AI backend tests
         run: uv run pytest backend/ai_backend/tests -v --cov=ai_backend --cov-report=xml:backend/coverage.xml
         env:
@@ -75,6 +79,12 @@ jobs:
       - name: Install Flutter dependencies
         working-directory: flutter_app
         run: flutter pub get
+
+      # Analyzer: infos/warnings are printed but do not fail the job (legacy deprecations).
+      # Remove --no-fatal-* flags to enforce a clean analyze bar.
+      - name: Dart analyzer (flutter analyze)
+        working-directory: flutter_app
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
 
       - name: Run Flutter tests (unit + widget)
         working-directory: flutter_app
