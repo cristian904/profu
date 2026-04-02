@@ -375,7 +375,7 @@ class _ExplicaTabState extends State<ExplicaTab> {
                             Icon(
                               Icons.help_outline,
                               size: 80,
-                              color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
                             ),
                             const SizedBox(height: 16),
                             Text(
@@ -406,7 +406,7 @@ class _ExplicaTabState extends State<ExplicaTab> {
                   color: Theme.of(context).colorScheme.surface,
                   boxShadow: [
                     BoxShadow(
-                      color: Theme.of(context).colorScheme.shadow.withOpacity(0.2),
+                      color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.2),
                       blurRadius: 4,
                       offset: const Offset(0, -2),
                     ),
@@ -910,7 +910,7 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
                             Icon(
                               Icons.school_outlined,
                               size: 80,
-                              color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
                             ),
                             const SizedBox(height: 16),
                             Padding(
@@ -945,7 +945,7 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
                   color: Theme.of(context).colorScheme.surface,
                   boxShadow: [
                     BoxShadow(
-                      color: Theme.of(context).colorScheme.shadow.withOpacity(0.2),
+                      color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.2),
                       blurRadius: 4,
                       offset: const Offset(0, -2),
                     ),

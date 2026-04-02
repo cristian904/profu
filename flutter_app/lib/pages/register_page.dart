@@ -105,7 +105,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           color: Theme.of(context)
                               .colorScheme
                               .onSurface
-                              .withOpacity(0.8),
+                              .withValues(alpha: 0.8),
                         ),
                     textAlign: TextAlign.center,
                   ),
@@ -209,7 +209,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<int>(
-                    value: _clasa,
+                    initialValue: _clasa,
                     decoration: const InputDecoration(
                       labelText: 'Clasa',
                       border: OutlineInputBorder(),

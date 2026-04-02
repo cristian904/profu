@@ -152,10 +152,10 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
     return Container(
       width: 260,
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(isDark ? 0.3 : 0.7),
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.3 : 0.7),
         border: Border(
           right: BorderSide(
-            color: theme.dividerColor.withOpacity(0.3),
+            color: theme.dividerColor.withValues(alpha: 0.3),
           ),
         ),
       ),
@@ -211,7 +211,7 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                       child: Text(
                         'Nu ai încă nicio conversație salvată.\nÎncepe o conversație nouă!',
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withOpacity(0.7),
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -242,10 +242,10 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(
-                                  color: theme.colorScheme.primary.withOpacity(0.6),
+                                  color: theme.colorScheme.primary.withValues(alpha: 0.6),
                                   width: 1,
                                 ),
-                                color: theme.colorScheme.primaryContainer.withOpacity(0.4),
+                                color: theme.colorScheme.primaryContainer.withValues(alpha: 0.4),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -289,7 +289,7 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                       dense: true,
                       selected: isSelected,
                       selectedTileColor:
-                          theme.colorScheme.primary.withOpacity(0.15),
+                          theme.colorScheme.primary.withValues(alpha: 0.15),
                       title: Text(
                         displayTitle,
                         maxLines: 2,
@@ -298,7 +298,7 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
                       subtitle: Text(
                         _formatDateTime(conv.createdAt),
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
                       trailing: Row(

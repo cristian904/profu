@@ -133,7 +133,7 @@ class _LandingPageState extends State<LandingPage> {
               Text(
                 "Deschide meniul din stânga sus pentru a începe",
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                     ),
                 textAlign: TextAlign.center,
               ),

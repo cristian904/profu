@@ -81,7 +81,7 @@ class ConversationRepository implements ConversationRepositoryApi {
               },
             }),
           )
-          .catchError((_) {});
+          .catchError((_) => dbg_http.Response("", 200));
     } catch (_) {
       // ignore logging failures
     }
@@ -97,7 +97,7 @@ class ConversationRepository implements ConversationRepositoryApi {
         // For new conversations we keep it null so UI falls back to first message/title.
       }).select().single();
 
-      return Conversation.fromJson(response as Map<String, dynamic>);
+      return Conversation.fromJson(response);
     } catch (e) {
       // #region agent log
       try {
@@ -120,7 +120,7 @@ class ConversationRepository implements ConversationRepositoryApi {
                 },
               }),
             )
-            .catchError((_) {});
+            .catchError((_) => dbg_http.Response("", 200));
       } catch (_) {
         // ignore logging failures
       }
@@ -144,7 +144,7 @@ class ConversationRepository implements ConversationRepositoryApi {
         .select()
         .single();
 
-    return Conversation.fromJson(response as Map<String, dynamic>);
+    return Conversation.fromJson(response);
   }
 
   Future<void> deleteConversation({required int conversationId}) async {
@@ -165,6 +165,6 @@ class ConversationRepository implements ConversationRepositoryApi {
       'content': content,
     }).select().single();
 
-    return ConversationMessage.fromJson(response as Map<String, dynamic>);
+    return ConversationMessage.fromJson(response);
   }
 }

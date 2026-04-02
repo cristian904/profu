@@ -4,7 +4,6 @@ import "package:flutter_dotenv/flutter_dotenv.dart";
 import "package:flutter_test/flutter_test.dart";
 import "package:http/http.dart" as http;
 import "package:http/testing.dart";
-import "package:profu_app/models/simulation_scoring_payload.dart";
 import "package:profu_app/services/simulation_scoring_api.dart";
 
 void main() {

@@ -1012,7 +1012,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                                 color: Theme.of(context)
                                     .colorScheme
                                     .primary
-                                    .withOpacity(0.5),
+                                    .withValues(alpha: 0.5),
                               ),
                               const SizedBox(height: 16),
                               Text(
@@ -1131,7 +1131,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                         color: Theme.of(context)
                             .colorScheme
                             .shadow
-                            .withOpacity(0.2),
+                            .withValues(alpha: 0.2),
                         blurRadius: 4,
                         offset: const Offset(0, -2),
                       ),
@@ -1384,20 +1384,20 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: Colors.cyan.shade400.withOpacity(0.9),
+                            color: Colors.cyan.shade400.withValues(alpha: 0.9),
                             width: 1.8,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.cyan.withOpacity(0.15),
+                              color: Colors.cyan.withValues(alpha: 0.15),
                               blurRadius: 8,
                               offset: const Offset(0, 2),
                             ),
                           ],
                           gradient: LinearGradient(
                             colors: [
-                              Colors.cyan.shade900.withOpacity(0.25),
-                              Colors.cyan.shade700.withOpacity(0.12),
+                              Colors.cyan.shade900.withValues(alpha: 0.25),
+                              Colors.cyan.shade700.withValues(alpha: 0.12),
                             ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
@@ -1439,13 +1439,13 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: Colors.teal.shade400.withOpacity(0.9),
+                            color: Colors.teal.shade400.withValues(alpha: 0.9),
                             width: 1.8,
                           ),
                           gradient: LinearGradient(
                             colors: [
-                              Colors.teal.shade900.withOpacity(0.25),
-                              Colors.teal.shade700.withOpacity(0.12),
+                              Colors.teal.shade900.withValues(alpha: 0.25),
+                              Colors.teal.shade700.withValues(alpha: 0.12),
                             ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
@@ -1496,10 +1496,10 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: (Colors.teal.shade300).withOpacity(isDisabled ? 0.4 : 0.85),
+                              color: (Colors.teal.shade300).withValues(alpha: isDisabled ? 0.4 : 0.85),
                               width: 1.5,
                             ),
-                            color: Colors.teal.shade900.withOpacity(isDisabled ? 0.1 : 0.2),
+                            color: Colors.teal.shade900.withValues(alpha: isDisabled ? 0.1 : 0.2),
                           ),
                           child: Text(
                             'Problema ${i + 1}',
@@ -1541,10 +1541,10 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: (Colors.teal.shade300).withOpacity(isDisabled ? 0.4 : 0.85),
+                              color: (Colors.teal.shade300).withValues(alpha: isDisabled ? 0.4 : 0.85),
                               width: 1.5,
                             ),
-                            color: Colors.teal.shade900.withOpacity(isDisabled ? 0.1 : 0.2),
+                            color: Colors.teal.shade900.withValues(alpha: isDisabled ? 0.1 : 0.2),
                           ),
                           child: Text(
                             label,

@@ -14,19 +14,19 @@ ThemeData get appDarkTheme {
   final colorScheme = ColorScheme.dark(
     primary: _darkCyanPrimary,
     onPrimary: _onPrimary,
-    primaryContainer: _darkCyanPrimary.withOpacity(0.3),
+    primaryContainer: _darkCyanPrimary.withValues(alpha: 0.3),
     onPrimaryContainer: _onPrimary,
     secondary: _darkCyanSecondary,
     onSecondary: _onPrimary,
     surface: _darkSurface,
     onSurface: _onSurface,
     surfaceContainerHighest: const Color(0xFF2A2A2A),
-    onSurfaceVariant: _onSurface.withOpacity(0.8),
+    onSurfaceVariant: _onSurface.withValues(alpha: 0.8),
     outline: _outlineVariant,
-    outlineVariant: _outlineVariant.withOpacity(0.5),
+    outlineVariant: _outlineVariant.withValues(alpha: 0.5),
     error: Colors.redAccent,
     onError: Colors.white,
-    errorContainer: Colors.redAccent.withOpacity(0.2),
+    errorContainer: Colors.redAccent.withValues(alpha: 0.2),
     onErrorContainer: Colors.redAccent,
     inversePrimary: _darkCyanSecondary,
   );
@@ -49,13 +49,13 @@ ThemeData get appDarkTheme {
     ),
     tabBarTheme: TabBarThemeData(
       labelColor: _onSurface,
-      unselectedLabelColor: _onSurface.withOpacity(0.7),
+      unselectedLabelColor: _onSurface.withValues(alpha: 0.7),
       indicatorColor: _darkCyanSecondary,
     ),
     inputDecorationTheme: InputDecorationTheme(
       border: const OutlineInputBorder(),
       focusedBorder: OutlineInputBorder(
-        borderSide: BorderSide(color: _darkCyanSecondary.withOpacity(0.8)),
+        borderSide: BorderSide(color: _darkCyanSecondary.withValues(alpha: 0.8)),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(

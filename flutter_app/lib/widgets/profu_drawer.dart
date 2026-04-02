@@ -73,7 +73,7 @@ class ProfuDrawer extends StatelessWidget {
                 Text(
                   displayLabel,
                   style: TextStyle(
-                    color: scheme.onSurface.withOpacity(0.9),
+                    color: scheme.onSurface.withValues(alpha: 0.9),
                     fontSize: 12,
                   ),
                   overflow: TextOverflow.ellipsis,
