@@ -1,5 +1,6 @@
-# CI: runs backend tests. Failures fail the workflow and block PR merge when branch
-# protection is enabled. Require status check "Build Status Check" in branch protection.
+# CI: runs AI backend (pytest) and Flutter UI (unit + widget) tests. Failures fail
+# the workflow and block PR merge when branch protection is enabled. Require status
+# check "Build Status Check" in branch protection.
 name: CI
 
 on:
@@ -8,14 +9,14 @@ on:
   pull_request:
     branches: [main, develop]
 
-# Run both test jobs even if one fails, so we see full results
+# Run test jobs in parallel; aggregate job runs even if one fails so both results are visible.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   backend-tests:
-    name: Backend Tests
+    name: AI Backend Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -41,7 +42,7 @@ jobs:
         if: steps.cached-venv.outputs.cache-hit != 'true'
         run: uv sync
 
-      - name: Run backend tests
+      - name: Run AI backend tests
         run: uv run pytest backend/ai_backend/tests -v --cov=ai_backend --cov-report=xml:backend/coverage.xml
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY || 'test_key_for_ci' }}
@@ -53,19 +54,49 @@ jobs:
           flags: backend
           fail_ci_if_error: false
 
+  flutter-tests:
+    name: Flutter UI Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        working-directory: flutter_app
+        run: flutter pub get
+
+      - name: Run Flutter tests (unit + widget)
+        working-directory: flutter_app
+        run: flutter test
+
   build-status:
     name: Build Status Check
     runs-on: ubuntu-latest
-    needs: [backend-tests]
+    needs: [backend-tests, flutter-tests]
     if: always()
 
     steps:
       - name: Check test results
         run: |
-          if [[ "${{ needs.backend-tests.result }}" == "success" ]]; then
-            echo "Backend tests passed."
-            exit 0
+          backend="${{ needs.backend-tests.result }}"
+          flutter="${{ needs.flutter-tests.result }}"
+          failed=0
+          if [[ "$backend" != "success" ]]; then
+            echo "AI backend tests failed: $backend"
+            failed=1
           else
-            echo "Backend tests failed: ${{ needs.backend-tests.result }}"
-            exit 1
+            echo "AI backend tests passed."
           fi
+          if [[ "$flutter" != "success" ]]; then
+            echo "Flutter UI tests failed: $flutter"
+            failed=1
+          else
+            echo "Flutter UI tests passed."
+          fi
+          exit $failed
