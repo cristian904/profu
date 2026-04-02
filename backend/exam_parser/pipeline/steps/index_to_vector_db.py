@@ -164,6 +164,7 @@ async def run(
             logger.info(f"Inserted {total_inserted}/{len(rows)} documents")
         except Exception as exc:
             logger.error(exc, traceback=traceback.format_exc())
+            raise
 
     checkpoint.mark_step_done(STEP_NAME)
     logger.info(f"[{STEP_NAME}] Step complete — indexed {total_inserted} documents")

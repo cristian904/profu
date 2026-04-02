@@ -14,8 +14,8 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from profu_logging.feature_logger import get_feature_logger
 from ai_backend.routers.common import get_supabase_client, get_user_id_from_request
-from ai_backend.features.simulation.service import SimulationService
-from ai_backend.utils.exam_timestamps import format_exam_timestamp_for_db
+from ai_backend.services.simulari.service import SimulationService
+from ai_backend.common.exam_timestamps import format_exam_timestamp_for_db
 
 
 router = APIRouter(prefix="/simulari", tags=["simulari"])

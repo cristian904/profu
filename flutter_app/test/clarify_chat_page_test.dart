@@ -1,9 +1,20 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:profu_app/pages/clarify_chat_page.dart';
-import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
-  group('ClarifyChatPage Tests', () {
+  setUpAll(() async {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await Supabase.initialize(
+      url: "https://test.supabase.co",
+      anonKey: "test-anon-key",
+    );
+  });
+
+  group("ClarifyChatPage Tests", () {
     testWidgets('Chat page should build without errors', (WidgetTester tester) async {
       await tester.pumpWidget(
         const MaterialApp(

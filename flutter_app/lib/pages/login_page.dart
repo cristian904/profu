@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../app_nav.dart';
+import '../core/navigation/app_nav.dart';
 import '../auth_config.dart';
 import 'google_login_stub.dart' if (dart.library.html) 'google_login_web.dart' as google_login;
 import 'register_page.dart';

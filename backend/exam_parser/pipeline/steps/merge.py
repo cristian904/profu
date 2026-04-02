@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import traceback
-from pathlib import Path
 from typing import Any
 
 from profu_logging.feature_logger import FeatureLogger
@@ -139,6 +138,7 @@ async def run(
             merged_count += 1
         except Exception as exc:
             logger.error(exc, traceback=traceback.format_exc())
+            raise
 
     if not config.dry_run:
         checkpoint.mark_step_done(STEP_NAME)

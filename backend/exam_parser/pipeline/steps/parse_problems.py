@@ -44,6 +44,7 @@ async def _process_one(
         checkpoint.mark_file_done(STEP_NAME, pdf.name)
     except Exception as exc:
         logger.error(exc, traceback=traceback.format_exc())
+        raise
 
 
 async def run(

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +32,11 @@ class PipelineConfig:
     start_from: str | None = None
     dry_run: bool = False
     overwrite: bool = False
+    # When set, override ``settings`` for this run only (see runner).
+    model_vision: str | None = None
+    model_structured: str | None = None
+    model_fix_identify: str | None = None
+    model_fix_repair: str | None = None
 
 
 @dataclass

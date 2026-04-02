@@ -2,17 +2,22 @@ import 'package:flutter/material.dart';
 
 import '../models/conversation_models.dart';
 import '../services/conversation_repository.dart';
+import '../services/conversation_repository_api.dart';
 
 class ConversationSidebar extends StatefulWidget {
   final ConversationType type;
   final Conversation? selectedConversation;
   final ValueChanged<Conversation?> onConversationSelected;
 
+  /// When null, uses [ConversationRepository] with the global Supabase client.
+  final ConversationRepositoryApi? repository;
+
   const ConversationSidebar({
     super.key,
     required this.type,
     required this.selectedConversation,
     required this.onConversationSelected,
+    this.repository,
   });
 
   @override
@@ -20,7 +25,8 @@ class ConversationSidebar extends StatefulWidget {
 }
 
 class _ConversationSidebarState extends State<ConversationSidebar> {
-  final ConversationRepository _repository = ConversationRepository();
+  ConversationRepositoryApi get _repository =>
+      widget.repository ?? ConversationRepository();
 
   late Future<List<Conversation>> _futureConversations;
 

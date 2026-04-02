@@ -1,0 +1,103 @@
+"""
+Shared pytest fixtures for ai_backend tests.
+
+- Default auth override: Depends(get_current_user_id) returns a stable fake UUID.
+- Default LLM override: Depends(get_llm) returns an AsyncMock so tests do not require
+  GOOGLE_API_KEY (patching router modules does not affect FastAPI Depends() bindings).
+"""
+
+from __future__ import annotations
+
+import uuid
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from ai_backend.main import app
+from ai_backend.common.auth import get_current_user_id
+from ai_backend.common.llm import get_llm
+from ai_backend.services.clarify_with_steps.models import GuidedLearningPrerequisitesOutput
+from ai_backend.services.solve_problem.models import (
+    SolveProblemIntentDetection,
+    SolveProblemProgressIntent,
+)
+
+_FAKE_AUTH_USER = uuid.UUID("00000000-0000-0000-0000-000000000001")
+
+
+def _default_mock_llm() -> MagicMock:
+    """
+    Build an LLM mock suitable for clarify-once (astream) and clarify step-by-step / solve-problem
+    (``with_structured_output`` + astream).
+    """
+    mock_llm = MagicMock()
+
+    async def _astream_impl(*args: object, **kwargs: object):
+        chunk = MagicMock()
+        chunk.content = "Test response"
+        yield chunk
+
+    mock_llm.astream = MagicMock(side_effect=_astream_impl)
+
+    async def _plain_ainvoke_impl(*args: object, **kwargs: object) -> MagicMock:
+        response = MagicMock()
+        response.content = "Test response"
+        return response
+
+    mock_llm.ainvoke = AsyncMock(side_effect=_plain_ainvoke_impl)
+
+    def _with_structured_output(schema: Any, **kwargs: Any) -> MagicMock:
+        name = getattr(schema, "__name__", type(schema).__name__)
+        chain = MagicMock()
+        if name == "GuidedLearningPrerequisitesOutput":
+            chain.ainvoke = AsyncMock(
+                return_value={
+                    "raw": MagicMock(content=""),
+                    "parsed": GuidedLearningPrerequisitesOutput(prerequisites=["Concept A"]),
+                    "parsing_error": None,
+                }
+            )
+        elif name == "SolveProblemIntentDetection":
+            chain.ainvoke = AsyncMock(
+                return_value={
+                    "raw": MagicMock(content=""),
+                    "parsed": SolveProblemIntentDetection(intent="new_hint"),
+                    "parsing_error": None,
+                }
+            )
+        elif name == "SolveProblemProgressIntent":
+            chain.ainvoke = AsyncMock(
+                return_value={
+                    "raw": MagicMock(content=""),
+                    "parsed": SolveProblemProgressIntent(progress_intent="good"),
+                    "parsing_error": None,
+                }
+            )
+        else:
+            chain.ainvoke = AsyncMock(return_value={"raw": MagicMock(content=""), "parsed": None, "parsing_error": None})
+        return chain
+
+    mock_llm.with_structured_output = MagicMock(side_effect=_with_structured_output)
+    return mock_llm
+
+
+@pytest.fixture(autouse=True)
+def _default_dependency_overrides(request: pytest.FixtureRequest) -> None:
+    """
+    Apply auth and get_llm overrides unless the test opts out via markers.
+    """
+    no_auth = request.node.get_closest_marker("no_auth_dependency_override")
+    no_llm = request.node.get_closest_marker("no_llm_dependency_override")
+
+    if not no_auth:
+        app.dependency_overrides[get_current_user_id] = lambda: _FAKE_AUTH_USER
+    if not no_llm:
+        app.dependency_overrides[get_llm] = _default_mock_llm
+
+    yield
+
+    if not no_auth:
+        app.dependency_overrides.pop(get_current_user_id, None)
+    if not no_llm:
+        app.dependency_overrides.pop(get_llm, None)

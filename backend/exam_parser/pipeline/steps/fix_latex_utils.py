@@ -8,9 +8,6 @@ trees, writes corrected copies to parallel structured_output_merged_fixed direct
 """
 from __future__ import annotations
 
-import argparse
-import concurrent.futures
-import copy
 import json
 import logging
 import re
@@ -379,7 +376,7 @@ def evaluate_batch_pro(
 
         def _call_retry() -> Any:
             return client.models.generate_content(
-                model=MODEL_PRO,
+                model=model_name,
                 contents=[retry_msg],
                 config=types.GenerateContentConfig(
                     temperature=0.0,
@@ -444,7 +441,7 @@ def repair_with_flash(
     text: str,
     issues: list[str],
     model_name: str = MODEL_FLASH,
-) -> str:
+) -> str | None:
     """
     Ask Gemini to repair LaTeX using Pro's issue list (retry if empty/unchanged).
 
@@ -455,10 +452,8 @@ def repair_with_flash(
         model_name: Model to use for the payload.
 
     Returns:
-        Repaired text.
-
-    Raises:
-        ValueError: If model cannot produce a changed non-empty string after retry.
+        Repaired text when the model returns a non-empty change; otherwise ``None``
+        (caller should keep *text* unchanged).
     """
     from google.genai import types
 
@@ -497,7 +492,13 @@ def repair_with_flash(
             "full corrected string with every $...$ and $$...$$ block valid."
         )
 
-    raise ValueError("Flash returned empty or unchanged text after retry")
+    logger.warning(
+        "Flash repair gave up after 2 attempts (empty or unchanged); keeping original "
+        "field text (length=%s, model=%s)",
+        len(text),
+        model_name,
+    )
+    return None
 
 
 def append_fix_log(

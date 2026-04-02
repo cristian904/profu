@@ -11,6 +11,7 @@ dependencies = [
     "supabase>=2.0.0",
     "tqdm>=4.66.0",
     "pydantic-settings>=2.0.0",
+    "streamlit>=1.32.0",
 ]
 
 [project.optional-dependencies]

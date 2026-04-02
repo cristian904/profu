@@ -83,15 +83,25 @@ async def _fix_one_file(
         if repair_tasks:
 
             async def _repair(fid: str, path: list, original: str, issues: list[str]) -> tuple[str, list, str | None]:
+                """
+                Return repaired text, or ``None`` if Flash could not improve the field
+                (original stays in *working*).
+                """
                 try:
-                    fixed = await asyncio.to_thread(repair_with_flash, client, original, issues, settings.model_fix_repair)
+                    fixed = await asyncio.to_thread(
+                        repair_with_flash, client, original, issues, settings.model_fix_repair
+                    )
+                    if fixed is None:
+                        logger.warning(
+                            f"No Flash repair applied for {fid} in {src.name} — leaving original text"
+                        )
                     return (fid, path, fixed)
                 except Exception as exc:
                     logger.error(
                         f"Flash repair failed for {fid} in {src.name}: {exc}",
                         traceback=traceback.format_exc(),
                     )
-                    return (fid, path, None)
+                    raise
 
             results = await asyncio.gather(
                 *[_repair(fid, path, orig, iss) for fid, path, orig, iss in repair_tasks]
@@ -106,7 +116,10 @@ async def _fix_one_file(
                 else:
                     failed += 1
 
-            logger.info(f"{src.name}: repaired={repaired}, failed={failed}")
+            logger.info(
+                f"{src.name}: repaired={repaired}, repair_skipped={failed} "
+                f"(original text kept where Flash did not return a fix)"
+            )
 
         dst.write_text(json.dumps(working, indent=2, ensure_ascii=False), encoding="utf-8")
         checkpoint.mark_file_done(STEP_NAME, src.name)
@@ -114,6 +127,7 @@ async def _fix_one_file(
 
     except Exception as exc:
         logger.error(exc, traceback=traceback.format_exc())
+        raise
 
 
 async def run(

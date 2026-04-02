@@ -2,11 +2,12 @@
 Unit tests for the clarify routers (explica and guided_learning).
 """
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import patch
 from fastapi.testclient import TestClient
 from ai_backend.config import settings
 from ai_backend.main import app
-from ai_backend.routers.common import QueryRequest, Message, get_llm
+from ai_backend.common.llm import get_llm
+from ai_backend.common.models import Message, QueryRequest
 
 client = TestClient(app)
 
@@ -40,18 +41,12 @@ class TestClarifyModels:
 
 class TestClarifyOnceEndpoint:
     """Test the /clarify/once-stream endpoint (Clarify Once mode)."""
-    
-    @patch('ai_backend.routers.clarify_once.get_llm')
-    def test_clarify_once_stream_endpoint_exists(self, mock_get_llm):
+
+    def test_clarify_once_stream_endpoint_exists(self) -> None:
         """Test that the /clarify/once-stream endpoint exists and accepts POST."""
-        # Mock the LLM to avoid real API calls
-        mock_llm = AsyncMock()
-        mock_llm.astream = AsyncMock()
-        mock_get_llm.return_value = mock_llm
-        
         response = client.post(
             "/clarify/once-stream",
-            json={"query": "Test question"}
+            json={"query": "Test question"},
         )
         
         # Should return 200 and be a streaming response
@@ -63,13 +58,8 @@ class TestClarifyOnceEndpoint:
         response = client.post("/clarify/once-stream", json={})
         assert response.status_code == 422  # Validation error
     
-    @patch('ai_backend.routers.clarify_once.get_llm')
-    def test_clarify_once_stream_with_history(self, mock_get_llm):
+    def test_clarify_once_stream_with_history(self) -> None:
         """Test streaming with conversation history."""
-        mock_llm = AsyncMock()
-        mock_llm.astream = AsyncMock()
-        mock_get_llm.return_value = mock_llm
-        
         response = client.post(
             "/clarify/once-stream",
             json={
@@ -86,16 +76,9 @@ class TestClarifyOnceEndpoint:
 
 class TestClarifyStepByStepEndpoint:
     """Test the /clarify/step-by-step-stream endpoint (Step-by-step mode)."""
-    
-    @patch('ai_backend.routers.clarify_with_steps.get_llm')
-    def test_step_by_step_stream_endpoint_exists(self, mock_get_llm):
+
+    def test_step_by_step_stream_endpoint_exists(self) -> None:
         """Test that the /clarify/step-by-step-stream endpoint exists and accepts POST."""
-        # Mock the LLM to avoid real API calls
-        mock_llm = AsyncMock()
-        mock_llm.astream = AsyncMock()
-        mock_llm.ainvoke = AsyncMock()
-        mock_get_llm.return_value = mock_llm
-        
         response = client.post(
             "/clarify/step-by-step-stream",
             json={"query": "Test question"}
@@ -110,13 +93,8 @@ class TestClarifyStepByStepEndpoint:
         response = client.post("/clarify/step-by-step-stream", json={})
         assert response.status_code == 422  # Validation error
     
-    @patch('ai_backend.routers.clarify_with_steps.get_llm')
-    def test_step_by_step_stream_with_history(self, mock_get_llm):
+    def test_step_by_step_stream_with_history(self) -> None:
         """Test streaming with conversation history (follow-up queries)."""
-        mock_llm = AsyncMock()
-        mock_llm.astream = AsyncMock()
-        mock_get_llm.return_value = mock_llm
-        
         response = client.post(
             "/clarify/step-by-step-stream",
             json={
@@ -134,14 +112,16 @@ class TestClarifyStepByStepEndpoint:
 class TestLLMIntegration:
     """Test LLM initialization and configuration."""
 
+    @pytest.mark.no_llm_dependency_override
     @patch.object(settings, "google_api_key", "test_key")
     def test_get_llm_with_api_key(self):
         """Test LLM initialization with API key."""
         llm = get_llm()
         assert llm is not None
-        assert "gemini-2.0-flash" in llm.model
+        assert llm.model == settings.gemini_model
         assert llm.temperature == 0.0
 
+    @pytest.mark.no_llm_dependency_override
     @patch.object(settings, "google_api_key", "")
     def test_get_llm_without_api_key(self):
         """Test that get_llm raises error without API key."""
@@ -154,7 +134,7 @@ class TestPromptsConfiguration:
     
     def test_prompts_loaded(self):
         """Test that prompts are loaded from YAML file."""
-        from ai_backend.routers.common import PROMPTS
+        from ai_backend.common.prompts import PROMPTS
         
         assert PROMPTS is not None
         assert 'clarify_chat' in PROMPTS
@@ -163,7 +143,7 @@ class TestPromptsConfiguration:
     
     def test_clarify_system_prompt_content(self):
         """Test that clarify system prompt contains expected content."""
-        from ai_backend.routers.common import PROMPTS
+        from ai_backend.common.prompts import PROMPTS
         
         prompt = PROMPTS['clarify_chat']['system_prompt']
         assert 'profesor' in prompt.lower()
@@ -173,7 +153,7 @@ class TestPromptsConfiguration:
     
     def test_guided_learning_prompts_exist(self):
         """Test that guided learning prompts are configured."""
-        from ai_backend.routers.common import PROMPTS
+        from ai_backend.common.prompts import PROMPTS
         
         assert 'prerequisite_generator' in PROMPTS['guided_learning']
         assert 'question_asker' in PROMPTS['guided_learning']

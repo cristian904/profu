@@ -7,7 +7,7 @@ import "package:flutter/services.dart";
 import "package:http/http.dart" as http;
 import "package:supabase_flutter/supabase_flutter.dart";
 
-import "../config/app_config.dart";
+import "../core/config/app_config.dart";
 import "../services/simulation_repository.dart";
 import "../services/simulation_scoring_api.dart";
 import "../widgets/latex_markdown_body.dart";

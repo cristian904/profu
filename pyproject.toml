@@ -10,6 +10,7 @@ dependencies = [
     "exam-parser",
     "poethepoet",
     "profu-logging",
+    "ruff>=0.9.0",
 ]
 
 [tool.uv.sources]
@@ -27,6 +28,10 @@ members = [
 ]
 
 [tool.poe.tasks]
+# Ruff: auto-fix what it can; exit non-zero if any issues remain (unsafe fixes off by default).
+lint = "ruff check ./backend --fix"
+exam_parser_ui = "streamlit run backend/exam_parser/pipeline/ui.py"
+pipeline_ui = { ref = "exam_parser_ui" }
 # Watch only backend/ai_backend so other project writes (logs, Flutter, etc.) don't trigger reload.
 # Exclude __pycache__ and .pyc; --reload-delay debounces rapid phantom changes (e.g. IDE/watcher quirks).
 ai = "uvicorn ai_backend.main:app --reload --reload-dir backend/ai_backend --reload-exclude '**/__pycache__/**' --reload-exclude '**/*.pyc' --reload-delay 0.5 --host 0.0.0.0 --port 8080"

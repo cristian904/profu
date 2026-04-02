@@ -5,7 +5,6 @@ import json
 import os
 import re
 import traceback
-from pathlib import Path
 from typing import Any
 
 from profu_logging.feature_logger import FeatureLogger
@@ -124,6 +123,7 @@ async def run(
             checkpoint.mark_file_done(STEP_NAME, f.name)
         except Exception as exc:
             logger.error(exc, traceback=traceback.format_exc())
+            raise
 
     checkpoint.mark_step_done(STEP_NAME)
     logger.info(f"[{STEP_NAME}] Step complete — inserted {total_inserted} rows total")

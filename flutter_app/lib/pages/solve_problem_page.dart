@@ -14,7 +14,7 @@ import 'dart:async' show Timer, TimeoutException;
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../config/app_config.dart';
+import '../core/config/app_config.dart';
 import '../models/conversation_models.dart';
 import '../services/conversation_repository.dart';
 import '../widgets/conversation_sidebar.dart';
@@ -632,6 +632,11 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
         Uri.parse('$_apiUrl/suggest-problem'),
       );
       request.headers['Content-Type'] = 'application/json';
+      final accessTokenSuggest =
+          Supabase.instance.client.auth.currentSession?.accessToken;
+      if (accessTokenSuggest != null) {
+        request.headers['Authorization'] = 'Bearer $accessTokenSuggest';
+      }
       request.body = json.encode({'problem_text': _problemText});
 
       final response = await request.send();

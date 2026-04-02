@@ -14,6 +14,7 @@ import asyncio
 from pathlib import Path
 
 from exam_parser.pipeline.config import STEP_NAMES, PipelineConfig
+from exam_parser.pipeline.model_options import api_ids_for_argparse
 from exam_parser.pipeline.runner import run_pipeline
 
 
@@ -61,6 +62,35 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Re-process files even if checkpoint says done",
     )
+    mid = api_ids_for_argparse()
+    p.add_argument(
+        "--model-vision",
+        choices=mid,
+        default=None,
+        metavar="MODEL",
+        help="Gemini model for PDF→markdown (parse problems & solutions).",
+    )
+    p.add_argument(
+        "--model-structured",
+        choices=mid,
+        default=None,
+        metavar="MODEL",
+        help="Gemini model for markdown→JSON structured extraction.",
+    )
+    p.add_argument(
+        "--model-fix-identify",
+        choices=mid,
+        default=None,
+        metavar="MODEL",
+        help="Gemini model for LaTeX issue identification (fix_latex).",
+    )
+    p.add_argument(
+        "--model-fix-repair",
+        choices=mid,
+        default=None,
+        metavar="MODEL",
+        help="Gemini model for LaTeX repair calls (fix_latex).",
+    )
     return p
 
 
@@ -88,9 +118,19 @@ def main() -> None:
         start_from=args.start_from,
         dry_run=args.dry_run,
         overwrite=args.overwrite,
+        model_vision=args.model_vision,
+        model_structured=args.model_structured,
+        model_fix_identify=args.model_fix_identify,
+        model_fix_repair=args.model_fix_repair,
     )
 
-    asyncio.run(run_pipeline(config))
+    try:
+        asyncio.run(run_pipeline(config))
+    except KeyboardInterrupt:
+        raise
+    except Exception:
+        logging.getLogger(__name__).exception("Pipeline stopped after an error in a step")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

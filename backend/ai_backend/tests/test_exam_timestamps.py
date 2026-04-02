@@ -7,7 +7,7 @@ from datetime import datetime
 
 from zoneinfo import ZoneInfo
 
-from ai_backend.utils.exam_timestamps import format_exam_timestamp_for_db
+from ai_backend.common.exam_timestamps import format_exam_timestamp_for_db
 
 
 def test_format_exam_timestamp_matches_expected_pattern() -> None:
