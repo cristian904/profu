@@ -6,9 +6,12 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "google-genai>=1.0.0",
+    "profu-logging",
     "python-dotenv>=1.0.0",
     "supabase>=2.0.0",
     "tqdm>=4.66.0",
+    "pydantic-settings>=2.0.0",
+    "streamlit>=1.32.0",
 ]
 
 [project.optional-dependencies]
@@ -24,4 +27,9 @@ build-backend = "setuptools.build_meta"
 "exam_parser" = "."
 
 [tool.setuptools]
-packages = ["exam_parser", "exam_parser.parsers"]
+packages = [
+    "exam_parser",
+    "exam_parser.parsers",
+    "exam_parser.pipeline",
+    "exam_parser.pipeline.steps",
+]

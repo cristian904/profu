@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # Solve-problem monthly quota (count from account creation); 0 = disabled
     solve_monthly_quota_threshold: int = 0
 
+    # CORS: comma-separated origins; empty = allow any origin with credentials disabled (Bearer auth)
+    cors_allow_origins: str = ""
+
     @property
     def supabase_key(self) -> str:
         """Prefer service role key; fall back to anon key."""

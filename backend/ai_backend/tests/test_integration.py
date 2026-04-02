@@ -2,10 +2,13 @@
 Integration tests for the streaming functionality.
 Tests both Clarify Once and Clarify Step-by-Step streaming endpoints.
 """
-import pytest
-from unittest.mock import AsyncMock, patch
+
+from unittest.mock import AsyncMock, MagicMock
+
 from fastapi.testclient import TestClient
+
 from ai_backend.main import app
+from ai_backend.common.llm import get_llm
 
 client = TestClient(app)
 
@@ -13,79 +16,53 @@ client = TestClient(app)
 class TestStreamingIntegration:
     """Integration tests for SSE streaming (Clarify Once mode)."""
 
-    async def _fake_astream(self, chunks):
-        """Helper async generator for mocking llm.astream."""
-        for c in chunks:
-            yield c
-    
-    @patch('ai_backend.routers.clarify_once.get_llm')
-    def test_stream_response_format(self, mock_get_llm):
+    def test_stream_response_format(self) -> None:
         """Test that streaming response follows SSE format."""
-        # Mock LLM to return test chunks
-        mock_chunk = AsyncMock()
-        mock_chunk.content = "Test response"
-        
-        mock_llm = AsyncMock()
-        mock_llm.astream = AsyncMock(return_value=self._fake_astream([mock_chunk]))
-        mock_get_llm.return_value = mock_llm
-        
         response = client.post(
             "/clarify/once-stream",
-            json={"query": "Test"}
+            json={"query": "Test"},
         )
-        
+
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/event-stream; charset=utf-8"
         assert "cache-control" in response.headers
         assert response.headers["cache-control"] == "no-cache"
-    
-    @patch('ai_backend.routers.clarify_once.get_llm')
-    def test_stream_includes_done_signal(self, mock_get_llm):
+
+    def test_stream_includes_done_signal(self) -> None:
         """Test that streaming includes [DONE] signal."""
-        mock_chunk = AsyncMock()
-        mock_chunk.content = "Response"
-        
-        mock_llm = AsyncMock()
-        mock_llm.astream = AsyncMock(return_value=self._fake_astream([mock_chunk]))
-        mock_get_llm.return_value = mock_llm
-        
         response = client.post(
             "/clarify/once-stream",
-            json={"query": "Test"}
+            json={"query": "Test"},
         )
-        
+
         content = response.text
         assert "data: [DONE]" in content
-    
-    @patch('ai_backend.routers.clarify_once.get_llm')
-    def test_stream_handles_empty_chunks(self, mock_get_llm):
+
+    async def _fake_astream(self, chunks: list) -> None:
+        """Helper async generator for mocking llm.astream."""
+        for c in chunks:
+            yield c
+
+    def test_stream_handles_empty_chunks(self) -> None:
         """Test that streaming handles empty chunks gracefully."""
-        mock_chunk_empty = AsyncMock()
+        mock_chunk_empty = MagicMock()
         mock_chunk_empty.content = ""
-        mock_chunk_valid = AsyncMock()
+        mock_chunk_valid = MagicMock()
         mock_chunk_valid.content = "Valid"
-        
+
         mock_llm = AsyncMock()
-        mock_llm.astream = AsyncMock(return_value=self._fake_astream([mock_chunk_empty, mock_chunk_valid]))
-        mock_get_llm.return_value = mock_llm
-        
+        mock_llm.astream = MagicMock(return_value=self._fake_astream([mock_chunk_empty, mock_chunk_valid]))
+        app.dependency_overrides[get_llm] = lambda: mock_llm
+
         response = client.post(
             "/clarify/once-stream",
-            json={"query": "Test"}
+            json={"query": "Test"},
         )
-        
+
         assert response.status_code == 200
 
-    @patch('ai_backend.routers.clarify_once.get_llm')
-    def test_stream_includes_meta_ttft(self, mock_get_llm):
+    def test_stream_includes_meta_ttft(self) -> None:
         """Test that streaming includes [META]{ttft} before first token."""
-        mock_chunk = AsyncMock()
-        mock_chunk.content = "Hello"
-
-        mock_llm = AsyncMock()
-        mock_llm.astream = AsyncMock(return_value=self._fake_astream([mock_chunk]))
-        mock_get_llm.return_value = mock_llm
-
         response = client.post("/clarify/once-stream", json={"query": "Test"})
         assert response.status_code == 200
         assert "data: [META]" in response.text
@@ -94,20 +71,18 @@ class TestStreamingIntegration:
 class TestStepByStepIntegration:
     """Integration tests for SSE streaming (Clarify Step-by-Step mode)."""
 
-    async def _fake_astream(self, chunks):
-        """Helper async generator for mocking llm.astream."""
+    async def _fake_astream(self, chunks: list) -> None:
         for c in chunks:
             yield c
 
-    @patch('ai_backend.routers.clarify_with_steps.get_llm')
-    def test_step_by_step_followup_includes_meta_and_done(self, mock_get_llm):
+    def test_step_by_step_followup_includes_meta_and_done(self) -> None:
         """Test follow-up path emits [META] and [DONE]."""
-        mock_chunk = AsyncMock()
+        mock_chunk = MagicMock()
         mock_chunk.content = "Răspuns\ncu newline"
 
         mock_llm = AsyncMock()
-        mock_llm.astream = AsyncMock(return_value=self._fake_astream([mock_chunk]))
-        mock_get_llm.return_value = mock_llm
+        mock_llm.astream = MagicMock(return_value=self._fake_astream([mock_chunk]))
+        app.dependency_overrides[get_llm] = lambda: mock_llm
 
         response = client.post(
             "/clarify/step-by-step-stream",
@@ -125,20 +100,24 @@ class TestStepByStepIntegration:
 
 class TestErrorHandling:
     """Test error handling in streaming."""
-    
-    @patch('ai_backend.routers.clarify_once.get_llm')
-    def test_stream_handles_llm_errors(self, mock_get_llm):
+
+    def test_stream_handles_llm_errors(self) -> None:
         """Test that streaming handles LLM errors gracefully."""
+
+        async def _astream_raises(*args: object, **kwargs: object):
+            raise RuntimeError("LLM Error")
+            if False:
+                yield None  # makes this an async generator for `async for`
+
         mock_llm = AsyncMock()
-        mock_llm.astream.side_effect = Exception("LLM Error")
-        mock_get_llm.return_value = mock_llm
-        
+        mock_llm.astream = _astream_raises
+        app.dependency_overrides[get_llm] = lambda: mock_llm
+
         response = client.post(
             "/clarify/once-stream",
-            json={"query": "Test"}
+            json={"query": "Test"},
         )
-        
-        # Should still return 200 but with error in stream
+
         assert response.status_code == 200
         content = response.text
-        assert "Eroare:" in content or "data: [DONE]" in content
+        assert "Eroare" in content or "data: [DONE]" in content

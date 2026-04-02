@@ -3,7 +3,6 @@ Difficulty classification for Romanian bacalaureat math problems (mate).
 Uses explicit criteria to assign low / medium / high via an AI step.
 """
 import os
-from pathlib import Path
 
 
 # Criteria for each level (Romanian bacalaureat mate: Subiectul I, II, III)

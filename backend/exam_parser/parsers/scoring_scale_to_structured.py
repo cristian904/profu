@@ -57,11 +57,10 @@ def _normalize_output(data: dict) -> dict:
     return out
 
 
-def scoring_scale_md_to_structured(md_text: str) -> dict:
+def scoring_scale_md_to_structured(md_text: str, model_name: str = "gemini-2.5-flash") -> dict:
     """
-    Convert scoring-scale markdown to structured JSON with s1/s2/s3.
-    Each entry has number, optional item (s2/s3), and solution_steps (array of
-    {step, score} or a single string).
+    Parse the markdown of a scoring scale (barem) and output JSON for s1, s2, s3.
+    Returns: {"s1": [...], "s2": [...], "s3": [...]}
     """
     from google import genai
 
@@ -75,7 +74,7 @@ def scoring_scale_md_to_structured(md_text: str) -> dict:
     client = genai.Client(api_key=api_key)
     full_prompt = EXTRACT_STRUCTURED_SOLUTIONS_PROMPT + "\n---\n\n" + md_text
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model=model_name,
         contents=[full_prompt],
     )
     raw = (response.text or "").strip()

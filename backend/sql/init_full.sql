@@ -62,21 +62,38 @@ CREATE TABLE IF NOT EXISTS conversation_messages (
 CREATE INDEX IF NOT EXISTS idx_conversation_messages_conversation_id ON conversation_messages(conversation_id);
 
 -- Exam simulation session (one exam per user)
+-- user_id is optional: Simulari flow inserts auth_user_id only (JWT); legacy rows may set user_id.
 CREATE TABLE IF NOT EXISTS exam_simulations (
     id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    -- Optional: direct link to Supabase auth user for RLS-friendly queries
+    auth_user_id UUID,
+    -- School subject for the simulation (e.g. math, informatics)
+    school_subject VARCHAR(100) DEFAULT 'math' NOT NULL,
+    -- Total score given by the student for this simulation (0-100)
+    student_score NUMERIC(5, 2),
     started_at TIMESTAMPTZ DEFAULT NOW(),
     finished_at TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_exam_simulations_user_id ON exam_simulations(user_id);
+CREATE INDEX IF NOT EXISTS idx_exam_simulations_auth_user_id ON exam_simulations(auth_user_id);
+CREATE INDEX IF NOT EXISTS idx_exam_simulations_user_subject_started_at
+    ON exam_simulations(user_id, school_subject, started_at);
 
 -- Problems included in a simulation (many problems per exam)
 CREATE TABLE IF NOT EXISTS exam_simulation_problems (
     id SERIAL PRIMARY KEY,
     exam_simulation_id INTEGER NOT NULL REFERENCES exam_simulations(id) ON DELETE CASCADE,
     exam_problem_id INTEGER NOT NULL REFERENCES exam_problems(id) ON DELETE CASCADE,
+    -- Display order of problems within the simulation
     order_index INTEGER,
+    -- Bac subiect number (1, 2, 3)
+    subject_number INTEGER NOT NULL,
+    -- Problem number within the subiect (e.g. 1..6 for Subiectul I, 1..2 for II/III)
+    problem_number INTEGER NOT NULL,
+    -- Score given by the student for this problem
+    student_score NUMERIC(5, 2),
     UNIQUE(exam_simulation_id, exam_problem_id)
 );
 
@@ -127,7 +144,7 @@ CREATE TABLE IF NOT EXISTS documents (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   content text,
   metadata jsonb,
-  embedding vector(1536)
+  embedding vector(1024)
 );
 
 -- =============================================================================
@@ -362,5 +379,54 @@ BEGIN
   RETURN cnt;
 END;
 $$;
+
+-- =============================================================================
+-- 7. Simulari: columns for exam_simulations on existing databases (PostgREST PGRST204)
+-- =============================================================================
+-- CREATE TABLE IF NOT EXISTS does not add new columns to an already-created table.
+-- If auth_user_id (etc.) is missing, API inserts fail with "not found in the schema cache".
+-- After applying, refresh PostgREST if needed: NOTIFY pgrst, 'reload schema';
+
+ALTER TABLE exam_simulations ADD COLUMN IF NOT EXISTS auth_user_id UUID;
+ALTER TABLE exam_simulations ADD COLUMN IF NOT EXISTS school_subject VARCHAR(100);
+ALTER TABLE exam_simulations ADD COLUMN IF NOT EXISTS student_score NUMERIC(5, 2);
+
+UPDATE exam_simulations SET school_subject = COALESCE(school_subject, 'mate')
+WHERE school_subject IS NULL;
+
+ALTER TABLE exam_simulations ALTER COLUMN school_subject SET DEFAULT 'mate';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM exam_simulations WHERE school_subject IS NULL) THEN
+        ALTER TABLE exam_simulations ALTER COLUMN school_subject SET NOT NULL;
+    END IF;
+END;
+$$;
+
+-- Simulari inserts do not send legacy user_id; allow NULL.
+ALTER TABLE exam_simulations ALTER COLUMN user_id DROP NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_exam_simulations_auth_user_id ON exam_simulations(auth_user_id);
+CREATE INDEX IF NOT EXISTS idx_exam_simulations_user_subject_started_at
+    ON exam_simulations(user_id, school_subject, started_at);
+
+ALTER TABLE exam_simulation_problems ADD COLUMN IF NOT EXISTS subject_number INTEGER;
+ALTER TABLE exam_simulation_problems ADD COLUMN IF NOT EXISTS problem_number INTEGER;
+ALTER TABLE exam_simulation_problems ADD COLUMN IF NOT EXISTS student_score NUMERIC(5, 2);
+
+-- =============================================================================
+-- 8. Helper view for simulation scores history
+-- =============================================================================
+
+CREATE OR REPLACE VIEW public.v_simulation_scores AS
+SELECT
+    s.id AS simulation_id,
+    s.auth_user_id,
+    s.school_subject,
+    s.started_at,
+    s.finished_at,
+    s.student_score
+FROM exam_simulations s;
 
 COMMIT;

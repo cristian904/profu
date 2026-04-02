@@ -3,14 +3,17 @@ import 'dart:convert';
 import 'package:http/http.dart' as dbg_http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../models/conversation_models.dart';
+import "../models/conversation_models.dart";
+import "conversation_repository_api.dart";
 
 /// Repository for conversations and messages using Supabase client.
 /// All operations use the current user's JWT; RLS restricts access to their data.
-class ConversationRepository {
-  ConversationRepository();
+class ConversationRepository implements ConversationRepositoryApi {
+  /// Uses [client] or falls back to the global Supabase instance.
+  ConversationRepository({SupabaseClient? client})
+      : _client = client ?? Supabase.instance.client;
 
-  SupabaseClient get _client => Supabase.instance.client;
+  final SupabaseClient _client;
 
   String? get _currentUserId => _client.auth.currentUser?.id;
 

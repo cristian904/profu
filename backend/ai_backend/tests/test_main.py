@@ -1,7 +1,6 @@
 """
 Unit tests for the main FastAPI application.
 """
-import pytest
 from fastapi.testclient import TestClient
 from ai_backend.main import app
 

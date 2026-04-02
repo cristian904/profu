@@ -74,7 +74,7 @@ def _validate_and_normalize(data: dict, expected_key: str | None) -> dict:
     return data
 
 
-def extract_structured_problems(md_path: str | Path) -> dict:
+def extract_structured_problems(md_path: str | Path, model_name: str = "gemini-2.5-flash") -> dict:
     """
     Read a Gemini vision output markdown file and return a structured JSON dict
     with exactly one of s1, s2, or s3 (array of problems). Each problem has
@@ -105,7 +105,7 @@ def extract_structured_problems(md_path: str | Path) -> dict:
     client = genai.Client(api_key=api_key)
     full_prompt = EXTRACT_STRUCTURED_PROMPT + "\n---\n\n" + md_text
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model=model_name,
         contents=[full_prompt],
     )
     raw = (response.text or "").strip()

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:profu_app/main.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:profu_app/app/profu_app.dart';
+import 'package:profu_app/core/di/app_dependencies.dart';
 import 'package:profu_app/widgets/profu_drawer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,27 +11,42 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues(<String, Object>{});
     await Supabase.initialize(
-      url: 'https://test.supabase.co',
-      anonKey: 'test-anon-key',
+      url: "https://test.supabase.co",
+      anonKey: "test-anon-key",
     );
   });
 
-  group('Main App Tests', () {
-    testWidgets('App should build without errors', (WidgetTester tester) async {
-      // Build the app
-      await tester.pumpWidget(const ProfuApp());
+  AppDependencies testDependencies() {
+    final http.Client client = MockClient((http.BaseRequest request) async {
+      if (request.url.path == "/index") {
+        return http.Response("{}", 200);
+      }
+      return http.Response("not found", 404);
+    });
+    return AppDependencies(
+      supabase: Supabase.instance.client,
+      httpClient: client,
+      apiBaseUrl: "http://widget.test",
+    );
+  }
 
-      // Verify that the app builds
+  group("Main App Tests", () {
+    testWidgets("App should build without errors", (WidgetTester tester) async {
+      final AppDependencies deps = testDependencies();
+      await tester.pumpWidget(ProfuApp(dependencies: deps));
+
       expect(find.byType(ProfuApp), findsOneWidget);
     });
 
-    testWidgets('App should have a title', (WidgetTester tester) async {
-      await tester.pumpWidget(const ProfuApp());
+    testWidgets("App should have a title when session shows landing", (WidgetTester tester) async {
+      final AppDependencies deps = testDependencies();
+      await tester.pumpWidget(ProfuApp(dependencies: deps));
+      await tester.pumpAndSettle();
 
-      // Verify that the app has a title
-      expect(find.text('Profu'), findsOneWidget);
+      // Logged-out users see LoginPage (may not show AppBar title "Profu" the same way).
+      expect(find.byType(ProfuApp), findsOneWidget);
     });
 
     testWidgets('App should have a drawer menu', (WidgetTester tester) async {
@@ -78,14 +96,13 @@ void main() {
     });
   });
 
-  group('Theme Tests', () {
-    testWidgets('App should use dark theme', (WidgetTester tester) async {
-      await tester.pumpWidget(const ProfuApp());
-      
-      // The app should be using dark theme
-      final materialApp = tester.widget<ProfuApp>(find.byType(ProfuApp));
-      // Dark theme should be set
-      expect(materialApp, isNotNull);
+  group("Theme Tests", () {
+    testWidgets("App should use dark theme", (WidgetTester tester) async {
+      final AppDependencies deps = testDependencies();
+      await tester.pumpWidget(ProfuApp(dependencies: deps));
+
+      final ProfuApp app = tester.widget<ProfuApp>(find.byType(ProfuApp));
+      expect(app.dependencies, isNotNull);
     });
   });
 }

@@ -17,20 +17,20 @@ MARKDOWN_LATEX_PROMPT = (
 )
 
 
-def _to_markdown_latex(client: object, raw_text: str) -> str:
+def _to_markdown_latex(client: object, raw_text: str, model_name: str = "gemini-2.5-flash") -> str:
     """Ask Gemini to convert raw extracted text to markdown with LaTeX math."""
     if not raw_text.strip():
         return raw_text
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model=model_name,
         contents=[f"{MARKDOWN_LATEX_PROMPT}\n\n---\n\n{raw_text}"],
     )
     return (response.text or "").strip()
 
 
-def parse_with_gemini_vision(pdf_path: str | Path) -> str:
+def parse_with_gemini_vision(pdf_path: str | Path, model_name: str = "gemini-2.5-flash") -> str:
     """
-    Convert a PDF to text using Gemini 2.0 Vision, then convert to markdown/LaTeX.
+    Convert a PDF to text using Gemini Vision, then convert to markdown/LaTeX.
     Returns markdown-style text with $...$ and $$...$$ for math.
     """
     from google import genai
@@ -47,11 +47,11 @@ def parse_with_gemini_vision(pdf_path: str | Path) -> str:
     pdf_bytes = path.read_bytes()
     client = genai.Client(api_key=api_key)
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model=model_name,
         contents=[
             types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
             EXTRACT_PROMPT,
         ],
     )
     raw_text = (response.text or "").strip()
-    return _to_markdown_latex(client, raw_text)
+    return _to_markdown_latex(client, raw_text, model_name)

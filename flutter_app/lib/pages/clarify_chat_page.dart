@@ -9,14 +9,26 @@ import 'package:math_expressions/math_expressions.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../config/app_config.dart';
+import '../core/config/app_config.dart';
 import '../models/conversation_models.dart';
 import '../services/conversation_repository.dart';
+import '../services/conversation_repository_api.dart';
 import '../widgets/conversation_sidebar.dart';
 import '../widgets/profu_drawer.dart';
 
 class ClarifyChatPage extends StatefulWidget {
-  const ClarifyChatPage({super.key});
+  /// Optional overrides for tests (defaults: live Supabase + [AppConfig.apiBaseUrl]).
+  const ClarifyChatPage({
+    super.key,
+    this.conversationRepository,
+    this.apiBaseUrl,
+  });
+
+  /// When null, uses [ConversationRepository] with the global Supabase client.
+  final ConversationRepositoryApi? conversationRepository;
+
+  /// When null, uses [AppConfig.apiBaseUrl] for clarify stream endpoints.
+  final String? apiBaseUrl;
 
   @override
   State<ClarifyChatPage> createState() => _ClarifyChatPageState();
@@ -54,9 +66,15 @@ class _ClarifyChatPageState extends State<ClarifyChatPage> with SingleTickerProv
       drawer: const ProfuDrawer(),
       body: TabBarView(
         controller: _tabController,
-        children: const [
-          ExplicaTab(),
-          GuidedLearningTab(),
+        children: [
+          ExplicaTab(
+            conversationRepository: widget.conversationRepository,
+            apiBaseUrl: widget.apiBaseUrl,
+          ),
+          GuidedLearningTab(
+            conversationRepository: widget.conversationRepository,
+            apiBaseUrl: widget.apiBaseUrl,
+          ),
         ],
       ),
     );
@@ -65,7 +83,11 @@ class _ClarifyChatPageState extends State<ClarifyChatPage> with SingleTickerProv
 
 // Explica Tab - Direct answers mode
 class ExplicaTab extends StatefulWidget {
-  const ExplicaTab({super.key});
+  /// Optional repository and API base for tests.
+  const ExplicaTab({super.key, this.conversationRepository, this.apiBaseUrl});
+
+  final ConversationRepositoryApi? conversationRepository;
+  final String? apiBaseUrl;
 
   @override
   State<ExplicaTab> createState() => _ExplicaTabState();
@@ -77,12 +99,14 @@ class _ExplicaTabState extends State<ExplicaTab> {
   final List<ChatMessage> _messages = [];
   bool _isStreaming = false;
 
-  final ConversationRepository _conversationRepository = ConversationRepository();
+  ConversationRepositoryApi get _conversationRepository =>
+      widget.conversationRepository ?? ConversationRepository();
+
   Conversation? _activeConversation;
   int? _conversationId;
   bool _isLoadingHistory = false;
 
-  String get _apiUrl => '${AppConfig.apiBaseUrl}/clarify/once-stream';
+  String get _apiUrl => "${widget.apiBaseUrl ?? AppConfig.apiBaseUrl}/clarify/once-stream";
 
   @override
   void dispose() {
@@ -321,6 +345,7 @@ class _ExplicaTabState extends State<ExplicaTab> {
       children: [
         ConversationSidebar(
           type: ConversationType.clarify,
+          repository: _conversationRepository,
           selectedConversation: _activeConversation,
           onConversationSelected: (conversation) {
             if (conversation == null) {
@@ -592,7 +617,11 @@ class _ExplicaTabState extends State<ExplicaTab> {
 
 // Guided Learning Tab - Interactive step-by-step mode
 class GuidedLearningTab extends StatefulWidget {
-  const GuidedLearningTab({super.key});
+  /// Optional repository and API base for tests.
+  const GuidedLearningTab({super.key, this.conversationRepository, this.apiBaseUrl});
+
+  final ConversationRepositoryApi? conversationRepository;
+  final String? apiBaseUrl;
 
   @override
   State<GuidedLearningTab> createState() => _GuidedLearningTabState();
@@ -604,12 +633,15 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
   final List<ChatMessage> _messages = [];
   bool _isStreaming = false;
 
-  final ConversationRepository _conversationRepository = ConversationRepository();
+  ConversationRepositoryApi get _conversationRepository =>
+      widget.conversationRepository ?? ConversationRepository();
+
   Conversation? _activeConversation;
   int? _conversationId;
   bool _isLoadingHistory = false;
 
-  String get _apiUrl => '${AppConfig.apiBaseUrl}/clarify/step-by-step-stream';
+  String get _apiUrl =>
+      "${widget.apiBaseUrl ?? AppConfig.apiBaseUrl}/clarify/step-by-step-stream";
 
   @override
   void dispose() {
@@ -848,6 +880,7 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
       children: [
         ConversationSidebar(
           type: ConversationType.clarifySteps,
+          repository: _conversationRepository,
           selectedConversation: _activeConversation,
           onConversationSelected: (conversation) {
             if (conversation == null) {

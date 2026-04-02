@@ -43,5 +43,10 @@ package-lock.json
 flutter_app/lib/supabase_rest_config.dart
 
 # Crawler downloads
-backend/crawler/downloads/
+/downloads/
+backend/crawler/past_exams/
+backend/crawler/var_2009/
 backend/crawler/downloads_exams/
+
+# Pipeline runs
+backend/exam_parser/runs/

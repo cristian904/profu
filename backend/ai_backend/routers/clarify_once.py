@@ -7,13 +7,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from ai_backend.features.clarify_once.service import stream_clarify_once
+from ai_backend.services.clarify_once.service import stream_clarify_once
 
 from .common import (
-    get_llm,
-    get_supabase_client,
+    LangGraphChatModel,
     QueryRequest,
     get_current_user_id,
+    get_llm,
+    get_supabase_client,
 )
 
 
@@ -24,7 +25,7 @@ router = APIRouter(prefix="/clarify", tags=["clarify_once"])
 async def clarify_once_stream(
     request: QueryRequest,
     user_id: UUID = Depends(get_current_user_id),
-    llm=Depends(get_llm),
+    llm: LangGraphChatModel = Depends(get_llm),
     supabase=Depends(get_supabase_client),
 ):
     """

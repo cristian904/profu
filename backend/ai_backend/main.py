@@ -5,12 +5,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 import logging
 import traceback
+import uuid
 
 from ai_backend.config import settings  # noqa: F401 - load .env via pydantic-settings
-from ai_backend.logging.log_utils import ColoredJsonFormatter
-from ai_backend.logging.feature_logger import get_feature_logger
-from ai_backend.routers import clarify_once, clarify_with_steps, solve_problem
-from ai_backend.routers.common import ensure_jwks_prefetch, get_user_id_from_request
+from profu_logging.log_utils import ColoredJsonFormatter
+from profu_logging.feature_logger import get_feature_logger
+from ai_backend.routers import clarify_once, clarify_with_steps, solve_problem, simulari
+from ai_backend.common.auth import ensure_jwks_prefetch, get_user_id_from_request
 
 # Feature-scoped loggers (preserve `source` values)
 LOG_VALIDATION = get_feature_logger(source="validation")
@@ -68,22 +69,39 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # Log unhandled exceptions as JSON (same format as other logs) then return 500
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
+    error_id = uuid.uuid4()
     user_id = None
     try:
         user_id = get_user_id_from_request(request)
     except Exception:
         pass
-    LOG_EXCEPTION.error(str(exc), user_id=user_id, traceback=traceback.format_exc())
+    LOG_EXCEPTION.error(
+        f"[error_id={error_id}] {exc!s}",
+        user_id=user_id,
+        traceback=traceback.format_exc(),
+    )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Internal server error", "message": str(exc)},
+        content={
+            "detail": "Internal server error",
+            "error_id": str(error_id),
+        },
     )
 
-# Enable CORS for Flutter app
+
+# CORS: set CORS_ALLOW_ORIGINS in .env (comma-separated) for production; empty = any origin, no credentials
+_cors_raw = (settings.cors_allow_origins or "").strip()
+if _cors_raw:
+    _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
+    _cors_credentials = True
+else:
+    _cors_origins = ["*"]
+    _cors_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific Flutter app origin
-    allow_credentials=True,
+    allow_origins=_cors_origins,
+    allow_credentials=_cors_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -92,6 +110,7 @@ app.add_middleware(
 app.include_router(clarify_once.router)
 app.include_router(clarify_with_steps.router)
 app.include_router(solve_problem.router)
+app.include_router(simulari.router)
 
 @app.get("/")
 async def root():
