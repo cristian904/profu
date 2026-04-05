@@ -3,7 +3,7 @@ name = "ai-backend"
 version = "1.0.0"
 description = "FastAPI backend for the Profu application"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",

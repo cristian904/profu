@@ -3,7 +3,7 @@ name = "exam-parser"
 version = "1.0.0"
 description = "Parse bacalaureat exam PDFs to markdown/LaTeX with Gemini 2.0 Vision"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "google-genai>=1.0.0",
     "profu-logging",

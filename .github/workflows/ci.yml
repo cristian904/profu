@@ -1,6 +1,5 @@
-# CI: Ruff on backend/, Dart analyzer + tests on flutter_app/. Failures fail the
-# workflow and block PR merge when branch protection is enabled. Require status
-# check "Build Status Check" in branch protection.
+# CI: Ruff + pytest on backend/; flutter analyze + flutter test on flutter_app/.
+# Any lint/analyze/test failure fails the job and the aggregate "Build Status Check".
 name: CI
 
 on:
@@ -26,17 +25,17 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          python-version: "3.13"
+          python-version: "3.12"
 
-      - name: Set up Python 3.13
-        run: uv python install 3.13
+      - name: Set up Python 3.12
+        run: uv python install 3.12
 
       - name: Load cached venv
         id: cached-venv
         uses: actions/cache@v4
         with:
           path: .venv
-          key: venv-${{ runner.os }}-3.13-${{ hashFiles('uv.lock') }}
+          key: venv-${{ runner.os }}-3.12-${{ hashFiles('uv.lock') }}
 
       - name: Install dependencies
         if: steps.cached-venv.outputs.cache-hit != 'true'
@@ -46,8 +45,10 @@ jobs:
       - name: Ruff check (Python backend)
         run: uv run ruff check ./backend
 
-      - name: Run AI backend tests
-        run: uv run pytest backend/ai_backend/tests -v --cov=ai_backend --cov-report=xml:backend/coverage.xml
+      - name: Run backend tests (ai_backend + exam_parser)
+        run: >-
+          uv run pytest backend/ai_backend/tests backend/exam_parser/tests -v
+          --cov=ai_backend --cov=exam_parser --cov-report=xml:backend/coverage.xml
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY || 'test_key_for_ci' }}
 
@@ -80,11 +81,10 @@ jobs:
         working-directory: flutter_app
         run: flutter pub get
 
-      # Analyzer: infos/warnings are printed but do not fail the job (legacy deprecations).
-      # Remove --no-fatal-* flags to enforce a clean analyze bar.
+      # Default: infos and warnings are fatal (same as strict IDE analyzer).
       - name: Dart analyzer (flutter analyze)
         working-directory: flutter_app
-        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+        run: flutter analyze
 
       - name: Run Flutter tests (unit + widget)
         working-directory: flutter_app
@@ -97,21 +97,21 @@ jobs:
     if: always()
 
     steps:
-      - name: Check test results
+      - name: Check lint, analyze, and test results
         run: |
           backend="${{ needs.backend-tests.result }}"
           flutter="${{ needs.flutter-tests.result }}"
           failed=0
           if [[ "$backend" != "success" ]]; then
-            echo "AI backend tests failed: $backend"
+            echo "AI backend job failed (ruff and/or pytest): $backend"
             failed=1
           else
-            echo "AI backend tests passed."
+            echo "AI backend job passed (ruff + pytest)."
           fi
           if [[ "$flutter" != "success" ]]; then
-            echo "Flutter UI tests failed: $flutter"
+            echo "Flutter job failed (analyze and/or tests): $flutter"
             failed=1
           else
-            echo "Flutter UI tests passed."
+            echo "Flutter job passed (analyze + tests)."
           fi
           exit $failed

@@ -2,7 +2,7 @@
 name = "profu"
 version = "1.0.0"
 description = "Profu - AI-Powered Bacalaureat Preparation Assistant"
-requires-python = ">=3.13"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "ai-backend[dev]",
     "uvicorn[standard]>=0.27.0",
@@ -42,8 +42,21 @@ ui = ["copy_env_flutter", "flutter_run"]
 # --ignore-health-checks: allows start on Docker Desktop when vector container is unhealthy (connection refused to Docker socket)
 supabase = { shell = "npx supabase start --ignore-health-check" }
 test = ["test_ai", "test_ui"]
-test_ai = "pytest backend/ai_backend/tests -v"
+# exam_parser only; terminal ends with Coverage.py TOTAL (percentage).
+test_ep = "pytest backend/exam_parser/tests -v --cov=exam_parser --cov-report=term-missing"
+# ai_backend + exam_parser; terminal ends with Coverage.py TOTAL (percentage).
+test_be = "pytest backend/ai_backend/tests backend/exam_parser/tests -v --cov=ai_backend --cov=exam_parser --cov-report=term-missing"
+# Alias: same as test_be (full Python backend + coverage). Used by poe test.
+test_ai = { ref = "test_be" }
 test_ui = { shell = "flutter test", cwd = "flutter_app" }
+
+[tool.coverage.run]
+# Omit test packages so reported % reflects product code (pytest-cov reads this from repo root).
+omit = [
+    "*/tests/*",
+    "**/tests/**",
+    "*/crawler/**",
+]
 
 [build-system]
 requires = ["hatchling"]

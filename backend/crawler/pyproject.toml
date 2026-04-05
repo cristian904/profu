@@ -3,7 +3,7 @@ name = "crawler"
 version = "1.0.0"
 description = "Crawler for bacalaureat M1 PDFs from variante-mate.ro and heiprofu.ro"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "httpx>=0.27.0",
     "beautifulsoup4>=4.12.0",

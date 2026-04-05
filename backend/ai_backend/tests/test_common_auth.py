@@ -170,8 +170,68 @@ class TestGetCurrentUserId:
         assert get_current_user_id(req) == uid
 
 
+class TestGetUserIdFromRequestRs256AndEdgeCases:
+    """RS256 path and header/decode edge cases."""
+
+    @patch.object(settings, "supabase_jwt_secret", _TEST_HS256_SECRET)
+    @patch.object(settings, "supabase_url", "https://example.supabase.co")
+    @patch("jwt.get_unverified_header", return_value={"alg": "RS256", "kid": "kid1"})
+    @patch("jwt.decode")
+    def test_rs256_verifies_with_jwks_signing_key(
+        self,
+        mock_decode: MagicMock,
+        _hdr: MagicMock,
+    ) -> None:
+        """Asymmetric tokens should use the global JWKS client and jwt.decode."""
+        uid = uuid.uuid4()
+        mock_decode.return_value = {"sub": str(uid)}
+        signing = MagicMock()
+        signing.key = b"pem"
+        jwks = MagicMock()
+        jwks.get_signing_key_from_jwt.return_value = signing
+        auth_module._jwks_client = jwks
+        token = "header.payload.sig"
+        req = _request_with_auth(f"Bearer {token}")
+        assert get_user_id_from_request(req) == uid
+        mock_decode.assert_called_once()
+        call_kw = mock_decode.call_args.kwargs
+        assert call_kw.get("algorithms") == ["RS256"]
+
+    @patch.object(settings, "supabase_jwt_secret", _TEST_HS256_SECRET)
+    @patch("jwt.get_unverified_header", side_effect=jwt.DecodeError("bad header"))
+    def test_header_decode_failure_falls_back_to_unsupported_alg(self, _hdr: MagicMock) -> None:
+        """If the JWT header cannot be read, alg is treated as unsupported."""
+        with pytest.raises(HTTPException) as exc:
+            get_user_id_from_request(_request_with_auth("Bearer not-a-jwt"))
+        assert exc.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+    @patch.object(settings, "supabase_jwt_secret", _TEST_HS256_SECRET)
+    @patch("jwt.get_unverified_header", return_value={"alg": "HS256"})
+    @patch("jwt.decode", side_effect=jwt.InvalidTokenError())
+    def test_invalid_token_error_maps_to_401(self, _dec: MagicMock, _hdr: MagicMock) -> None:
+        """Generic PyJWT errors should surface as invalid token."""
+        token = jwt.encode(
+            {"sub": str(uuid.uuid4()), "exp": datetime.now(UTC) + timedelta(hours=1)},
+            _TEST_HS256_SECRET,
+            algorithm="HS256",
+        )
+        with pytest.raises(HTTPException) as exc:
+            get_user_id_from_request(_request_with_auth(f"Bearer {token}"))
+        assert exc.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+
 class TestEnsureJwksPrefetch:
     """Smoke tests for JWKS prefetch (network mocked)."""
+
+    def test_no_op_when_jwks_client_already_initialized(self) -> None:
+        """Second prefetch call should not recreate the PyJWKClient."""
+        auth_module._jwks_client = MagicMock()
+        try:
+            with patch.object(auth_module, "PyJWKClient") as mock_cls:
+                ensure_jwks_prefetch()
+            mock_cls.assert_not_called()
+        finally:
+            auth_module._jwks_client = None
 
     def test_no_op_without_url_or_secret(self) -> None:
         with patch.object(settings, "supabase_jwt_secret", ""), patch.object(settings, "supabase_url", ""):
