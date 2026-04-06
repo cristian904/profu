@@ -27,7 +27,11 @@ from ai_backend.common.streaming.sse import (
     sse_data_line,
 )
 
-from .graph import StepByStepLearningState, build_step_by_step_learning_graph
+from ai_backend.services.clarify_guardrails.constants import CLARIFY_GUARDRAILS_DEFAULT_BLOCK_MESSAGE_RO
+from ai_backend.services.clarify_guardrails.context import format_messages_for_guardrails_context
+from ai_backend.services.clarify_guardrails.evaluator import evaluate_clarify_guardrails
+
+from .graph import StepByStepLearningState, get_compiled_step_by_step_learning_graph
 
 LOG = get_feature_logger(source="clarify_step_by_step")
 
@@ -82,7 +86,7 @@ async def stream_clarify_step_by_step(
             tags=["clarify", "step_by_step"],
         ) as langfuse_config:
             if is_initial_query:
-                graph = build_step_by_step_learning_graph(llm, composer)
+                graph = get_compiled_step_by_step_learning_graph(llm, composer)
                 initial_state: StepByStepLearningState = {
                     "messages": [],
                     "original_query": request_query,
@@ -90,11 +94,14 @@ async def stream_clarify_step_by_step(
                     "current_prerequisite_index": 0,
                     "prerequisites_completed": False,
                     "progress_preview_sent": False,
+                    "guardrails_context": "",
+                    "guardrails_allowed": False,
+                    "guardrails_block_message_ro": "",
                 }
                 stream_queue: asyncio.Queue = asyncio.Queue()
                 # Merge langfuse callbacks into the LangGraph config
                 config = {
-                    "configurable": {"stream_queue": stream_queue},
+                    "configurable": {"stream_queue": stream_queue, "user_id": str(user_id)},
                     **langfuse_config,
                 }
                 invoke_task = asyncio.create_task(graph.ainvoke(initial_state, config=config))
@@ -124,6 +131,23 @@ async def stream_clarify_step_by_step(
 
                 await invoke_task
             else:
+                guardrails_context = format_messages_for_guardrails_context(history)
+                guardrails_result = await evaluate_clarify_guardrails(
+                    llm=llm,
+                    composer=composer,
+                    user_query=request_query,
+                    conversation_context=guardrails_context,
+                    config=langfuse_config,
+                    user_id=user_id,
+                )
+                if not guardrails_result.allow:
+                    block_text = (guardrails_result.student_facing_message_ro or "").strip() or (
+                        CLARIFY_GUARDRAILS_DEFAULT_BLOCK_MESSAGE_RO
+                    )
+                    yield sse_data_line(escape_sse_data(block_text))
+                    yield emit_done()
+                    return
+
                 system_prompt = composer.get("guided_learning.question_asker")
                 messages: list[Any] = [SystemMessage(content=system_prompt)]
 

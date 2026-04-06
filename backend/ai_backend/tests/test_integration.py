@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from ai_backend.main import app
 from ai_backend.common.llm import get_llm
+from ai_backend.services.clarify_guardrails.models import ClarifyGuardrailsOutput
 
 client = TestClient(app)
 
@@ -80,8 +81,22 @@ class TestStepByStepIntegration:
         mock_chunk = MagicMock()
         mock_chunk.content = "Răspuns\ncu newline"
 
+        guard_chain = MagicMock()
+        guard_chain.ainvoke = AsyncMock(
+            return_value={
+                "raw": MagicMock(content=""),
+                "parsed": ClarifyGuardrailsOutput(
+                    allow=True,
+                    reason_code="allowed",
+                    student_facing_message_ro="",
+                ),
+                "parsing_error": None,
+            }
+        )
+
         mock_llm = AsyncMock()
         mock_llm.astream = MagicMock(return_value=self._fake_astream([mock_chunk]))
+        mock_llm.with_structured_output = MagicMock(return_value=guard_chain)
         app.dependency_overrides[get_llm] = lambda: mock_llm
 
         response = client.post(

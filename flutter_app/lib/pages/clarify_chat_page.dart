@@ -13,8 +13,11 @@ import '../core/config/app_config.dart';
 import '../models/conversation_models.dart';
 import '../services/conversation_repository.dart';
 import '../services/conversation_repository_api.dart';
-import '../widgets/conversation_sidebar.dart';
+import '../theme/chat_typography.dart';
+import '../widgets/centered_chat_panel.dart';
+import '../widgets/collapsible_conversation_sidebar.dart';
 import '../widgets/profu_drawer.dart';
+import '../widgets/profu_scene_background.dart';
 
 class ClarifyChatPage extends StatefulWidget {
   /// Optional overrides for tests (defaults: live Supabase + [AppConfig.apiBaseUrl]).
@@ -64,18 +67,20 @@ class _ClarifyChatPageState extends State<ClarifyChatPage> with SingleTickerProv
         ),
       ),
       drawer: const ProfuDrawer(),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          ExplicaTab(
-            conversationRepository: widget.conversationRepository,
-            apiBaseUrl: widget.apiBaseUrl,
-          ),
-          GuidedLearningTab(
-            conversationRepository: widget.conversationRepository,
-            apiBaseUrl: widget.apiBaseUrl,
-          ),
-        ],
+      body: ProfuSceneBackground(
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            ExplicaTab(
+              conversationRepository: widget.conversationRepository,
+              apiBaseUrl: widget.apiBaseUrl,
+            ),
+            GuidedLearningTab(
+              conversationRepository: widget.conversationRepository,
+              apiBaseUrl: widget.apiBaseUrl,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -342,8 +347,9 @@ class _ExplicaTabState extends State<ExplicaTab> {
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ConversationSidebar(
+        CollapsibleConversationSidebar(
           type: ConversationType.clarify,
           repository: _conversationRepository,
           selectedConversation: _activeConversation,
@@ -361,36 +367,35 @@ class _ExplicaTabState extends State<ExplicaTab> {
           },
         ),
         Expanded(
-          child: Column(
-            children: [
-              if (_isLoadingHistory)
-                const LinearProgressIndicator(minHeight: 2),
-              // Chat messages
-              Expanded(
-                child: _messages.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.help_outline,
-                              size: 80,
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'Pune o întrebare despre ce nu ai înțeles!',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodyLarge
-                                  ?.copyWith(
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                  ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      )
+          child: CenteredChatLayout(
+            child: Column(
+              children: [
+                if (_isLoadingHistory)
+                  const LinearProgressIndicator(minHeight: 2),
+                // Chat messages
+                Expanded(
+                  child: _messages.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.help_outline,
+                                size: 72,
+                                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'Pune o întrebare despre ce nu ai înțeles!',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      fontSize: ChatTypography.body,
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        )
                     : ListView.builder(
                         controller: _scrollController,
                         padding: const EdgeInsets.all(16),
@@ -399,62 +404,56 @@ class _ExplicaTabState extends State<ExplicaTab> {
                           return _buildMessageBubble(_messages[index]);
                         },
                       ),
-              ),
-              // Input area
-              Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.2),
-                      blurRadius: 4,
-                      offset: const Offset(0, -2),
-                    ),
-                  ],
                 ),
-                padding: const EdgeInsets.all(16),
-                child: SafeArea(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _messageController,
-                          decoration: InputDecoration(
-                            hintText: 'Scrie mesajul tău...',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
+                // Input area — no surface panel; floats on background.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: SafeArea(
+                    top: false,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            style: TextStyle(
+                              fontSize: ChatTypography.input,
+                              color: Theme.of(context).colorScheme.onSurface,
                             ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 12,
+                            decoration: chatComposerInputDecoration(
+                              context,
+                              hintText: 'Scrie mesajul tău...',
                             ),
+                            maxLines: null,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) => _sendMessage(),
+                            enabled: !_isStreaming && !_isLoadingHistory,
                           ),
-                          maxLines: null,
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => _sendMessage(),
-                          enabled: !_isStreaming && !_isLoadingHistory,
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      FloatingActionButton(
-                        onPressed:
-                            _isStreaming || _isLoadingHistory ? null : _sendMessage,
-                        child: _isStreaming
-                            ? SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Theme.of(context).colorScheme.onPrimary,
-                                ),
-                              )
-                            : const Icon(Icons.send),
-                      ),
-                    ],
+                        const SizedBox(width: 8),
+                        FloatingActionButton(
+                          elevation: 0,
+                          focusElevation: 0,
+                          hoverElevation: 0,
+                          highlightElevation: 0,
+                          onPressed:
+                              _isStreaming || _isLoadingHistory ? null : _sendMessage,
+                          child: _isStreaming
+                              ? SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Theme.of(context).colorScheme.onPrimary,
+                                  ),
+                                )
+                              : const Icon(Icons.send),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],
@@ -464,152 +463,164 @@ class _ExplicaTabState extends State<ExplicaTab> {
   Widget _buildMessageBubble(ChatMessage message) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Align(
-      alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Column(
-        crossAxisAlignment: message.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          // Show time to first token above assistant messages
-          if (!message.isUser && message.timeToFirstToken != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 16, bottom: 4),
-              child: Text(
-                'Time to first token: ${message.timeToFirstToken!.toStringAsFixed(2)}s',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: scheme.onSurfaceVariant,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ),
-          Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.75,
-            ),
-            decoration: BoxDecoration(
-              color: message.isUser
-                  ? scheme.primary
-                  : scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (message.isUser)
-              // User messages: simple text
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Text(
-                  message.text,
-                  style: TextStyle(
-                    color: message.isUser
-                        ? scheme.onPrimary
-                        : scheme.onSurface,
-                    fontSize: 16,
-                  ),
-                ),
-              )
-            else
-              // AI messages: markdown support
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: MarkdownBody(
-                  data: message.text.isEmpty ? '_Typing..._' : message.text,
-                  selectable: true,
-                  shrinkWrap: true,
-                  fitContent: true,
-                  builders: {
-                    'latex': LatexElementBuilder(),
-                    'code': CustomCodeElementBuilder(),
-                  },
-                  inlineSyntaxes: [LatexInlineSyntax()],
-                  styleSheet: MarkdownStyleSheet(
-                    p: TextStyle(
-                      color: scheme.onSurface,
-                      fontSize: 16,
-                      height: 1.5,
-                    ),
-                    strong: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: scheme.onSurface,
-                    ),
-                    em: const TextStyle(
-                      fontStyle: FontStyle.italic,
-                    ),
-                    code: TextStyle(
-                      backgroundColor: scheme.surface,
-                      color: scheme.onSurface,
-                      fontFamily: 'monospace',
-                      fontSize: 14,
-                    ),
-                    codeblockPadding: const EdgeInsets.all(8),
-                    codeblockDecoration: BoxDecoration(
-                      color: scheme.surface,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    blockquote: TextStyle(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: ChatTypography.bubbleMaxWidth),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!message.isUser && message.timeToFirstToken != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    'Time to first token: ${message.timeToFirstToken!.toStringAsFixed(2)}s',
+                    textAlign: TextAlign.start,
+                    style: TextStyle(
+                      fontSize: 11,
                       color: scheme.onSurfaceVariant,
                       fontStyle: FontStyle.italic,
                     ),
-                    blockquotePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    blockquoteDecoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border(
-                        left: BorderSide(
-                          color: scheme.outline,
-                          width: 4,
+                  ),
+                ),
+              if (message.isUser)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Container(
+                    constraints: BoxConstraints(
+                      maxWidth: ChatTypography.bubbleMaxWidth * 0.92,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: scheme.primary,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          message.text,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            color: scheme.onPrimary,
+                            fontSize: ChatTypography.body,
+                          ),
+                        ),
+                        if (message.isStreaming)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: scheme.onPrimary,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      MarkdownBody(
+                        data: message.text.isEmpty ? '_Typing..._' : message.text,
+                        selectable: true,
+                        shrinkWrap: true,
+                        fitContent: true,
+                        builders: {
+                          'latex': LatexElementBuilder(),
+                          'code': CustomCodeElementBuilder(),
+                        },
+                        inlineSyntaxes: [LatexInlineSyntax()],
+                        styleSheet: MarkdownStyleSheet(
+                          p: TextStyle(
+                            color: scheme.onSurface,
+                            fontSize: ChatTypography.body,
+                            height: 1.5,
+                          ),
+                          strong: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: scheme.onSurface,
+                          ),
+                          em: const TextStyle(
+                            fontStyle: FontStyle.italic,
+                          ),
+                          code: TextStyle(
+                            backgroundColor: scheme.surface.withValues(alpha: 0.4),
+                            color: scheme.onSurface,
+                            fontFamily: 'monospace',
+                            fontSize: ChatTypography.code,
+                          ),
+                          codeblockPadding: const EdgeInsets.all(8),
+                          codeblockDecoration: BoxDecoration(
+                            color: scheme.surface.withValues(alpha: 0.22),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          blockquote: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontStyle: FontStyle.italic,
+                          ),
+                          blockquotePadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          blockquoteDecoration: const BoxDecoration(),
+                          h1: TextStyle(
+                            fontSize: ChatTypography.h1,
+                            fontWeight: FontWeight.bold,
+                            color: scheme.onSurface,
+                            height: 1.5,
+                          ),
+                          h2: TextStyle(
+                            fontSize: ChatTypography.h2,
+                            fontWeight: FontWeight.bold,
+                            color: scheme.onSurface,
+                            height: 1.4,
+                          ),
+                          h3: TextStyle(
+                            fontSize: ChatTypography.h3,
+                            fontWeight: FontWeight.bold,
+                            color: scheme.onSurface,
+                            height: 1.3,
+                          ),
+                          listBullet: TextStyle(
+                            color: scheme.onSurface,
+                            fontSize: ChatTypography.listBullet,
+                          ),
+                          listIndent: 24,
+                          h1Padding: const EdgeInsets.only(top: 8, bottom: 4),
+                          h2Padding: const EdgeInsets.only(top: 8, bottom: 4),
+                          h3Padding: const EdgeInsets.only(top: 8, bottom: 4),
+                          textAlign: WrapAlignment.start,
+                          h1Align: WrapAlignment.start,
+                          h2Align: WrapAlignment.start,
+                          h3Align: WrapAlignment.start,
+                          h4Align: WrapAlignment.start,
                         ),
                       ),
-                    ),
-                    h1: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: scheme.onSurface,
-                      height: 1.5,
-                    ),
-                    h2: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: scheme.onSurface,
-                      height: 1.4,
-                    ),
-                    h3: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: scheme.onSurface,
-                      height: 1.3,
-                    ),
-                    listBullet: TextStyle(
-                      color: scheme.onSurface,
-                      fontSize: 16,
-                    ),
-                    listIndent: 24,
-                    h1Padding: const EdgeInsets.only(top: 8, bottom: 4),
-                    h2Padding: const EdgeInsets.only(top: 8, bottom: 4),
-                    h3Padding: const EdgeInsets.only(top: 8, bottom: 4),
+                      if (message.isStreaming)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-              ),
-            if (message.isStreaming)
-              Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
-                child: SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: message.isUser
-                        ? scheme.onPrimary
-                        : scheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
-      ),
-      ],
       ),
     );
   }
@@ -877,8 +888,9 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ConversationSidebar(
+        CollapsibleConversationSidebar(
           type: ConversationType.clarifySteps,
           repository: _conversationRepository,
           selectedConversation: _activeConversation,
@@ -896,104 +908,97 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
           },
         ),
         Expanded(
-          child: Column(
-            children: [
-              if (_isLoadingHistory)
-                const LinearProgressIndicator(minHeight: 2),
-              // Chat messages
-              Expanded(
-                child: _messages.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.school_outlined,
-                              size: 80,
-                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
-                            ),
-                            const SizedBox(height: 16),
-                            Padding(
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 32),
-                              child: Text(
-                                'Pune o întrebare și te voi ghida pas cu pas să înțelegi conceptul!',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyLarge
-                                    ?.copyWith(
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                    ),
-                                textAlign: TextAlign.center,
+          child: CenteredChatLayout(
+            child: Column(
+              children: [
+                if (_isLoadingHistory)
+                  const LinearProgressIndicator(minHeight: 2),
+                // Chat messages
+                Expanded(
+                  child: _messages.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.school_outlined,
+                                size: 72,
+                                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
                               ),
-                            ),
-                          ],
-                        ),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          return _buildMessageBubble(_messages[index]);
-                        },
-                      ),
-              ),
-              // Input area
-              Container(
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Theme.of(context).colorScheme.shadow.withValues(alpha: 0.2),
-                      blurRadius: 4,
-                      offset: const Offset(0, -2),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.all(16),
-                child: SafeArea(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _messageController,
-                          decoration: InputDecoration(
-                            hintText: 'Scrie mesajul tău...',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 12,
-                            ),
-                          ),
-                          maxLines: null,
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => _sendMessage(),
-                          enabled: !_isStreaming && !_isLoadingHistory,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      FloatingActionButton(
-                        onPressed:
-                            _isStreaming || _isLoadingHistory ? null : _sendMessage,
-                        child: _isStreaming
-                            ? SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Theme.of(context).colorScheme.onPrimary,
+                              const SizedBox(height: 16),
+                              Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 32),
+                                child: Text(
+                                  'Pune o întrebare și te voi ghida pas cu pas să înțelegi conceptul!',
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        fontSize: ChatTypography.body,
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                      ),
+                                  textAlign: TextAlign.center,
                                 ),
-                              )
-                            : const Icon(Icons.send),
-                      ),
-                    ],
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _messages.length,
+                          itemBuilder: (context, index) {
+                            return _buildMessageBubble(_messages[index]);
+                          },
+                        ),
+                ),
+                // Input area — no surface panel; floats on background.
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  child: SafeArea(
+                    top: false,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _messageController,
+                            style: TextStyle(
+                              fontSize: ChatTypography.input,
+                              color: Theme.of(context).colorScheme.onSurface,
+                            ),
+                            decoration: chatComposerInputDecoration(
+                              context,
+                              hintText: 'Scrie mesajul tău...',
+                            ),
+                            maxLines: null,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) => _sendMessage(),
+                            enabled: !_isStreaming && !_isLoadingHistory,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FloatingActionButton(
+                          elevation: 0,
+                          focusElevation: 0,
+                          hoverElevation: 0,
+                          highlightElevation: 0,
+                          onPressed:
+                              _isStreaming || _isLoadingHistory ? null : _sendMessage,
+                          child: _isStreaming
+                              ? SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Theme.of(context).colorScheme.onPrimary,
+                                  ),
+                                )
+                              : const Icon(Icons.send),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ],
@@ -1003,152 +1008,164 @@ class _GuidedLearningTabState extends State<GuidedLearningTab> {
   Widget _buildMessageBubble(ChatMessage message) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Align(
-      alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Column(
-        crossAxisAlignment: message.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          // Show time to first token above assistant messages
-          if (!message.isUser && message.timeToFirstToken != null)
-            Padding(
-              padding: const EdgeInsets.only(left: 16, bottom: 4),
-              child: Text(
-                'Time to first token: ${message.timeToFirstToken!.toStringAsFixed(2)}s',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: scheme.onSurfaceVariant,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ),
-          Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.75,
-            ),
-            decoration: BoxDecoration(
-              color: message.isUser
-                  ? scheme.primary
-                  : scheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (message.isUser)
-              // User messages: simple text
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Text(
-                  message.text,
-                  style: TextStyle(
-                    color: message.isUser
-                        ? scheme.onPrimary
-                        : scheme.onSurface,
-                    fontSize: 16,
-                  ),
-                ),
-              )
-            else
-              // AI messages: markdown support
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: MarkdownBody(
-                  data: message.text.isEmpty ? '_Typing..._' : message.text,
-                  selectable: true,
-                  shrinkWrap: true,
-                  fitContent: true,
-                  builders: {
-                    'latex': LatexElementBuilder(),
-                    'code': CustomCodeElementBuilder(),
-                  },
-                  inlineSyntaxes: [LatexInlineSyntax()],
-                  styleSheet: MarkdownStyleSheet(
-                    p: TextStyle(
-                      color: scheme.onSurface,
-                      fontSize: 16,
-                      height: 1.5,
-                    ),
-                    strong: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: scheme.onSurface,
-                    ),
-                    em: const TextStyle(
-                      fontStyle: FontStyle.italic,
-                    ),
-                    code: TextStyle(
-                      backgroundColor: scheme.surface,
-                      color: scheme.onSurface,
-                      fontFamily: 'monospace',
-                      fontSize: 14,
-                    ),
-                    codeblockPadding: const EdgeInsets.all(8),
-                    codeblockDecoration: BoxDecoration(
-                      color: scheme.surface,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    blockquote: TextStyle(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: ChatTypography.bubbleMaxWidth),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!message.isUser && message.timeToFirstToken != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    'Time to first token: ${message.timeToFirstToken!.toStringAsFixed(2)}s',
+                    textAlign: TextAlign.start,
+                    style: TextStyle(
+                      fontSize: 11,
                       color: scheme.onSurfaceVariant,
                       fontStyle: FontStyle.italic,
                     ),
-                    blockquotePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    blockquoteDecoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border(
-                        left: BorderSide(
-                          color: scheme.outline,
-                          width: 4,
+                  ),
+                ),
+              if (message.isUser)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Container(
+                    constraints: BoxConstraints(
+                      maxWidth: ChatTypography.bubbleMaxWidth * 0.92,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: scheme.primary,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          message.text,
+                          textAlign: TextAlign.right,
+                          style: TextStyle(
+                            color: scheme.onPrimary,
+                            fontSize: ChatTypography.body,
+                          ),
+                        ),
+                        if (message.isStreaming)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: scheme.onPrimary,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      MarkdownBody(
+                        data: message.text.isEmpty ? '_Typing..._' : message.text,
+                        selectable: true,
+                        shrinkWrap: true,
+                        fitContent: true,
+                        builders: {
+                          'latex': LatexElementBuilder(),
+                          'code': CustomCodeElementBuilder(),
+                        },
+                        inlineSyntaxes: [LatexInlineSyntax()],
+                        styleSheet: MarkdownStyleSheet(
+                          p: TextStyle(
+                            color: scheme.onSurface,
+                            fontSize: ChatTypography.body,
+                            height: 1.5,
+                          ),
+                          strong: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: scheme.onSurface,
+                          ),
+                          em: const TextStyle(
+                            fontStyle: FontStyle.italic,
+                          ),
+                          code: TextStyle(
+                            backgroundColor: scheme.surface.withValues(alpha: 0.4),
+                            color: scheme.onSurface,
+                            fontFamily: 'monospace',
+                            fontSize: ChatTypography.code,
+                          ),
+                          codeblockPadding: const EdgeInsets.all(8),
+                          codeblockDecoration: BoxDecoration(
+                            color: scheme.surface.withValues(alpha: 0.22),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          blockquote: TextStyle(
+                            color: scheme.onSurfaceVariant,
+                            fontStyle: FontStyle.italic,
+                          ),
+                          blockquotePadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          blockquoteDecoration: const BoxDecoration(),
+                          h1: TextStyle(
+                            fontSize: ChatTypography.h1,
+                            fontWeight: FontWeight.bold,
+                            color: scheme.onSurface,
+                            height: 1.5,
+                          ),
+                          h2: TextStyle(
+                            fontSize: ChatTypography.h2,
+                            fontWeight: FontWeight.bold,
+                            color: scheme.onSurface,
+                            height: 1.4,
+                          ),
+                          h3: TextStyle(
+                            fontSize: ChatTypography.h3,
+                            fontWeight: FontWeight.bold,
+                            color: scheme.onSurface,
+                            height: 1.3,
+                          ),
+                          listBullet: TextStyle(
+                            color: scheme.onSurface,
+                            fontSize: ChatTypography.listBullet,
+                          ),
+                          listIndent: 24,
+                          h1Padding: const EdgeInsets.only(top: 8, bottom: 4),
+                          h2Padding: const EdgeInsets.only(top: 8, bottom: 4),
+                          h3Padding: const EdgeInsets.only(top: 8, bottom: 4),
+                          textAlign: WrapAlignment.start,
+                          h1Align: WrapAlignment.start,
+                          h2Align: WrapAlignment.start,
+                          h3Align: WrapAlignment.start,
+                          h4Align: WrapAlignment.start,
                         ),
                       ),
-                    ),
-                    h1: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: scheme.onSurface,
-                      height: 1.5,
-                    ),
-                    h2: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: scheme.onSurface,
-                      height: 1.4,
-                    ),
-                    h3: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: scheme.onSurface,
-                      height: 1.3,
-                    ),
-                    listBullet: TextStyle(
-                      color: scheme.onSurface,
-                      fontSize: 16,
-                    ),
-                    listIndent: 24,
-                    h1Padding: const EdgeInsets.only(top: 8, bottom: 4),
-                    h2Padding: const EdgeInsets.only(top: 8, bottom: 4),
-                    h3Padding: const EdgeInsets.only(top: 8, bottom: 4),
+                      if (message.isStreaming)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-              ),
-            if (message.isStreaming)
-              Padding(
-                padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
-                child: SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: message.isUser
-                        ? scheme.onPrimary
-                        : scheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-          ],
+            ],
+          ),
         ),
-      ),
-      ],
       ),
     );
   }
@@ -1206,9 +1223,11 @@ class LatexElementBuilder extends MarkdownElementBuilder {
             child: Math.tex(
               latex,
               mathStyle: isBlock ? MathStyle.display : MathStyle.text,
-              textStyle: preferredStyle?.copyWith(fontSize: isBlock ? 18 : 16),
+              textStyle: preferredStyle?.copyWith(
+                fontSize: isBlock ? ChatTypography.h3 : ChatTypography.body,
+              ),
               options: MathOptions(
-                fontSize: isBlock ? 18 : 16,
+                fontSize: isBlock ? ChatTypography.h3 : ChatTypography.body,
                 color: scheme.onSurface,
               ),
             ),
@@ -1220,7 +1239,7 @@ class LatexElementBuilder extends MarkdownElementBuilder {
             style: TextStyle(
               color: scheme.error,
               fontFamily: 'monospace',
-              fontSize: 14,
+              fontSize: ChatTypography.code,
             ),
           );
         }
@@ -1256,7 +1275,7 @@ class CustomCodeElementBuilder extends MarkdownElementBuilder {
             code,
             style: TextStyle(
               fontFamily: 'monospace',
-              fontSize: 14,
+              fontSize: ChatTypography.code,
               color: scheme.onSurface,
             ),
           ),
@@ -1461,9 +1480,6 @@ class FunctionGraphWidget extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: scheme.outlineVariant,
-        ),
       ),
       child: Column(
         children: [
@@ -1538,12 +1554,7 @@ class FunctionGraphWidget extends StatelessWidget {
                     sideTitles: SideTitles(showTitles: false),
                   ),
                 ),
-                borderData: FlBorderData(
-                  show: true,
-                  border: Border.all(
-                    color: scheme.outline,
-                  ),
-                ),
+                borderData: FlBorderData(show: false),
                 minX: xMin,
                 maxX: xMax,
                 minY: yMin,

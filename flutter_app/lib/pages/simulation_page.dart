@@ -12,6 +12,7 @@ import "../services/simulation_repository.dart";
 import "../services/simulation_scoring_api.dart";
 import "../widgets/latex_markdown_body.dart";
 import "../widgets/profu_drawer.dart";
+import "../widgets/profu_scene_background.dart";
 import "../widgets/simulation_exam_timer_strip.dart";
 import "../widgets/simulation_marking_guide_section.dart";
 import "../widgets/simulation_scores_submit_footer.dart";
@@ -534,18 +535,20 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
         ),
       ),
       drawer: const ProfuDrawer(),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          Center(
-            child: Text(
-              "Istoricul simularilor va fi afisat aici.",
-              style: Theme.of(context).textTheme.bodyLarge,
-              textAlign: TextAlign.center,
+      body: ProfuSceneBackground(
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            Center(
+              child: Text(
+                "Istoricul simularilor va fi afisat aici.",
+                style: Theme.of(context).textTheme.bodyLarge,
+                textAlign: TextAlign.center,
+              ),
             ),
-          ),
-          _buildSimulareTab(context),
-        ],
+            _buildSimulareTab(context),
+          ],
+        ),
       ),
     );
   }

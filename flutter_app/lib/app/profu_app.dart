@@ -60,13 +60,7 @@ class _ProfuAppState extends State<ProfuApp> {
       child: MaterialApp(
         navigatorKey: appNavigatorKey,
         title: "Profu",
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.blue,
-            brightness: Brightness.light,
-          ),
-          useMaterial3: true,
-        ),
+        theme: appLightTheme,
         darkTheme: appDarkTheme,
         themeMode: ThemeMode.dark,
         initialRoute: "/",

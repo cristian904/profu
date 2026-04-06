@@ -25,6 +25,8 @@ from ai_backend.common.streaming.sse import (
     escape_sse_data,
     sse_data_line,
 )
+from ai_backend.services.clarify_guardrails.context import format_messages_for_guardrails_context
+from ai_backend.services.clarify_once.graph import get_compiled_clarify_once_graph
 
 LOG = get_feature_logger(source="clarify_once")
 
@@ -57,6 +59,10 @@ async def stream_clarify_once(
 
     Yields:
         SSE-formatted strings (`data: ...\\n\\n`).
+
+    Flow:
+        LangGraph runs a guardrails structured check, then either streams the clarify reply
+        or a short blocked message (Romanian). Uses one extra LLM call when allowed.
     """
     try:
         LOG.info("Stream started", user_id=user_id)
@@ -85,8 +91,10 @@ async def stream_clarify_once(
 
         messages.append(HumanMessage(content=request_query))
 
+        guardrails_context = format_messages_for_guardrails_context(history)
+
         start_time = time.time()
-        first_token_received = False
+        first_content_chunk = True
 
         async with langfuse_trace_context(
             trace_id=trace_id,
@@ -95,14 +103,41 @@ async def stream_clarify_once(
             name="clarify_once",
             tags=["clarify"],
         ) as langfuse_config:
-            async for chunk in llm.astream(messages, config=langfuse_config):
-                if not getattr(chunk, "content", None):
+            graph = get_compiled_clarify_once_graph(llm, composer)
+            stream_queue: asyncio.Queue = asyncio.Queue()
+            config = {
+                "configurable": {"stream_queue": stream_queue, "user_id": str(user_id)},
+                **langfuse_config,
+            }
+            initial_state = {
+                "messages": messages,
+                "request_query": request_query,
+                "guardrails_context": guardrails_context,
+                "guardrails_allowed": False,
+                "guardrails_block_message_ro": "",
+            }
+            invoke_task = asyncio.create_task(graph.ainvoke(initial_state, config=config))
+
+            stream_timeout = 1.0
+            while True:
+                try:
+                    item = await asyncio.wait_for(stream_queue.get(), timeout=stream_timeout)
+                except asyncio.TimeoutError:
+                    if invoke_task.done():
+                        if invoke_task.exception() is not None:
+                            raise invoke_task.exception()
+                        break
                     continue
-                if not first_token_received:
+
+                if item is None:
+                    break
+                if first_content_chunk:
                     yield emit_meta_ttft(start_time)
-                    first_token_received = True
-                yield sse_data_line(escape_sse_data(chunk.content))
+                    first_content_chunk = False
+                yield sse_data_line(escape_sse_data(str(item)))
                 await asyncio.sleep(0.01)
+
+            await invoke_task
 
         yield emit_done()
     except Exception as e:

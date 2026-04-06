@@ -1,5 +1,11 @@
 """
 Tests for ``ai_backend.langfuse`` — client singleton and trace context helpers.
+
+File name ``test_langfuse_trace_unit.py`` sorts **after** ``test_langfuse_node_spans.py`` so
+these tests run later in the suite. Constructing extra ``Langfuse()`` instances here
+registers multiple SDK clients; if this module ran before the Langfuse graph integration
+tests, LangChain tracing would be skipped (\"multiple langfuse clients\") and those tests
+would fail.
 """
 
 from __future__ import annotations

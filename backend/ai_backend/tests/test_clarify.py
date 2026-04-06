@@ -137,6 +137,8 @@ class TestPromptsConfiguration:
         from ai_backend.common.prompts import PROMPTS
         
         assert PROMPTS is not None
+        assert "clarify_guardrails" in PROMPTS
+        assert "system_prompt" in PROMPTS["clarify_guardrails"]
         assert 'clarify_chat' in PROMPTS
         assert 'system_prompt' in PROMPTS['clarify_chat']
         assert 'guided_learning' in PROMPTS

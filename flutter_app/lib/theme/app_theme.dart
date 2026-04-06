@@ -1,77 +1,121 @@
-import 'package:flutter/material.dart';
+import "package:flutter/material.dart";
 
-// Dark theme palette: mostly dark with dark cyan touches
-const Color _darkBackground = Color(0xFF3B3B3B); // main page background
-const Color _darkSurface = Color(0xFF1E1E1E);
-const Color _darkCyanPrimary = Color(0xFF0D7377);
-const Color _darkCyanSecondary = Color(0xFF14A3A3);
-const Color _onPrimary = Color(0xFFE0F7F7);
-const Color _onSurface = Color(0xFFE0E0E0);
-const Color _outlineVariant = Color(0xFF2D3D3D); // subtle dark cyan tint
+import "app_colors.dart";
 
-/// Dark theme: mostly dark with dark cyan as primary accent.
+/// Dark theme for Profu: landing palette (blue primary, orange accent, slate surfaces).
 ThemeData get appDarkTheme {
-  final colorScheme = ColorScheme.dark(
-    primary: _darkCyanPrimary,
-    onPrimary: _onPrimary,
-    primaryContainer: _darkCyanPrimary.withValues(alpha: 0.3),
-    onPrimaryContainer: _onPrimary,
-    secondary: _darkCyanSecondary,
-    onSecondary: _onPrimary,
-    surface: _darkSurface,
-    onSurface: _onSurface,
-    surfaceContainerHighest: const Color(0xFF2A2A2A),
-    onSurfaceVariant: _onSurface.withValues(alpha: 0.8),
-    outline: _outlineVariant,
-    outlineVariant: _outlineVariant.withValues(alpha: 0.5),
+  final ColorScheme colorScheme = ColorScheme.dark(
+    primary: AppColors.primary,
+    onPrimary: Colors.white,
+    primaryContainer: AppColors.primarySoft,
+    onPrimaryContainer: AppColors.text,
+    secondary: AppColors.accent,
+    onSecondary: const Color(0xFF0B1120),
+    surface: AppColors.surface,
+    onSurface: AppColors.text,
+    surfaceContainerHighest: AppColors.surfaceAlt,
+    onSurfaceVariant: AppColors.textMuted,
+    outline: AppColors.textMuted,
+    outlineVariant: AppColors.border,
     error: Colors.redAccent,
     onError: Colors.white,
     errorContainer: Colors.redAccent.withValues(alpha: 0.2),
     onErrorContainer: Colors.redAccent,
-    inversePrimary: _darkCyanSecondary,
+    inversePrimary: AppColors.accent,
   );
 
   return ThemeData(
     useMaterial3: true,
+    brightness: Brightness.dark,
     colorScheme: colorScheme,
-    scaffoldBackgroundColor: _darkBackground,
+    scaffoldBackgroundColor: AppColors.bg,
     cardTheme: CardThemeData(
-      color: _darkSurface,
-      elevation: 2,
+      color: AppColors.surface.withValues(alpha: 0.92),
+      shadowColor: AppColors.shadowSoft,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: AppColors.border),
+      ),
     ),
     drawerTheme: const DrawerThemeData(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      surfaceTintColor: Colors.transparent,
     ),
     appBarTheme: AppBarTheme(
-      backgroundColor: Colors.black,
-      foregroundColor: _onSurface,
-      iconTheme: const IconThemeData(color: _darkCyanSecondary),
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      backgroundColor: Colors.transparent,
+      foregroundColor: AppColors.text,
+      surfaceTintColor: Colors.transparent,
+      iconTheme: const IconThemeData(color: AppColors.primary),
+      titleTextStyle: const TextStyle(
+        color: AppColors.text,
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+      ),
     ),
     tabBarTheme: TabBarThemeData(
-      labelColor: _onSurface,
-      unselectedLabelColor: _onSurface.withValues(alpha: 0.7),
-      indicatorColor: _darkCyanSecondary,
+      labelColor: AppColors.text,
+      unselectedLabelColor: AppColors.textMuted,
+      indicatorColor: AppColors.primary,
+      dividerColor: AppColors.border,
     ),
     inputDecorationTheme: InputDecorationTheme(
-      border: const OutlineInputBorder(),
+      filled: true,
+      fillColor: AppColors.slateDeep.withValues(alpha: 0.65),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: AppColors.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: AppColors.primary.withValues(alpha: 0.45),
+        ),
+      ),
       focusedBorder: OutlineInputBorder(
-        borderSide: BorderSide(color: _darkCyanSecondary.withValues(alpha: 0.8)),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: _darkCyanPrimary,
-        foregroundColor: _onPrimary,
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      ),
+    ),
+    elevatedButtonTheme: ElevatedButtonThemeData(
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.surfaceAlt,
+        foregroundColor: AppColors.text,
+        elevation: 0,
+        side: const BorderSide(color: AppColors.border),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      ),
+    ),
+    dividerTheme: const DividerThemeData(
+      color: AppColors.border,
+      thickness: 1,
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: AppColors.surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: AppColors.border),
       ),
     ),
   );
 }
 
-/// Light theme (unchanged from original; for future theme switching).
+/// Light theme placeholder; seed matches landing primary for consistency.
 ThemeData get appLightTheme {
   return ThemeData(
     colorScheme: ColorScheme.fromSeed(
-      seedColor: Colors.blue,
+      seedColor: AppColors.primary,
       brightness: Brightness.light,
     ),
     useMaterial3: true,

@@ -150,14 +150,9 @@ class _ConversationSidebarState extends State<ConversationSidebar> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Container(
-      width: 260,
+      width: double.infinity,
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.3 : 0.7),
-        border: Border(
-          right: BorderSide(
-            color: theme.dividerColor.withValues(alpha: 0.3),
-          ),
-        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

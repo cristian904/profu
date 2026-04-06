@@ -2,7 +2,9 @@ import "package:flutter/material.dart";
 import "package:http/http.dart" as http;
 
 import "../core/di/app_dependencies.dart";
+import "../widgets/glass_panel.dart";
 import "../widgets/profu_drawer.dart";
+import "../widgets/profu_scene_background.dart";
 
 /// Home shell after sign-in: health check to API and greeting from profile.
 class LandingPage extends StatefulWidget {
@@ -110,55 +112,60 @@ class _LandingPageState extends State<LandingPage> {
         ],
       ),
       drawer: const ProfuDrawer(),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Image.asset(
-                "imgs/gemini_gray.png",
-                height: 180,
-                fit: BoxFit.contain,
-              ),
-              const SizedBox(height: 32),
-              Text(
-                "Bine ai venit la Profu!",
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+      body: ProfuSceneBackground(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: GlassPanel(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(
+                    "imgs/gemini_gray.png",
+                    height: 180,
+                    fit: BoxFit.contain,
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    "Bine ai venit la Profu!",
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    "Deschide meniul din stânga sus pentru a începe",
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 48),
+                  if (_isLoading)
+                    const CircularProgressIndicator()
+                  else if (_error != null)
+                    Text(
+                      "Server offline",
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    )
+                  else
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.check_circle,
+                          size: 20,
+                          color: Colors.green[400],
+                        ),
+                        const SizedBox(width: 8),
+                        const Text("Conectat la server"),
+                      ],
                     ),
-                textAlign: TextAlign.center,
+                ],
               ),
-              const SizedBox(height: 16),
-              Text(
-                "Deschide meniul din stânga sus pentru a începe",
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-                    ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 48),
-              if (_isLoading)
-                const CircularProgressIndicator()
-              else if (_error != null)
-                Text(
-                  "Server offline",
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                )
-              else
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.check_circle,
-                      size: 20,
-                      color: Colors.green[400],
-                    ),
-                    const SizedBox(width: 8),
-                    const Text("Conectat la server"),
-                  ],
-                ),
-            ],
+            ),
           ),
         ),
       ),

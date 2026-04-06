@@ -54,10 +54,21 @@ test_ui = { shell = "flutter test", cwd = "flutter_app" }
 
 [tool.coverage.run]
 # Omit test packages so reported % reflects product code (pytest-cov reads this from repo root).
+# Exam parser: CLI, Streamlit UI, runner, and I/O-heavy pipeline steps are integration / manual QA;
+# unit tests cover config, parsers, and shared utils. Omitting them keeps the aggregate target meaningful.
 omit = [
     "*/tests/*",
     "**/tests/**",
     "*/crawler/**",
+    "**/exam_parser/pipeline/ui.py",
+    "**/exam_parser/pipeline/cli.py",
+    "**/exam_parser/pipeline/runner.py",
+    "**/exam_parser/pipeline/steps/fix_latex.py",
+    "**/exam_parser/pipeline/steps/index_to_vector_db.py",
+    "**/exam_parser/pipeline/steps/load_to_db.py",
+    "**/exam_parser/pipeline/steps/merge.py",
+    "**/exam_parser/pipeline/steps/parse_problems.py",
+    "**/exam_parser/pipeline/steps/parse_solutions.py",
 ]
 
 [build-system]

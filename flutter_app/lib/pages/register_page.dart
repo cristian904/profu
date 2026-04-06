@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../widgets/glass_panel.dart';
+import '../widgets/profu_scene_background.dart';
+
 /// Register with email and password. Nume, prenume, clasa stored in public.users.
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -80,41 +83,46 @@ class _RegisterPageState extends State<RegisterPage> {
   Widget build(BuildContext context) {
     if (_signUpSuccess) {
       return Scaffold(
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.check_circle_outline,
-                    size: 64,
-                    color: Theme.of(context).colorScheme.primary,
+        body: ProfuSceneBackground(
+          child: SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: GlassPanel(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        size: 64,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'Cont creat',
+                        style: Theme.of(context).textTheme.headlineSmall,
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Verifică emailul pentru confirmare (dacă este activat) sau autentifică-te.',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.8),
+                            ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 24),
+                      FilledButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Mergi la autentificare'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 24),
-                  Text(
-                    'Cont creat',
-                    style: Theme.of(context).textTheme.headlineSmall,
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Verifică emailul pentru confirmare (dacă este activat) sau autentifică-te.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.8),
-                        ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  FilledButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Mergi la autentificare'),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -130,16 +138,19 @@ class _RegisterPageState extends State<RegisterPage> {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+      body: ProfuSceneBackground(
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: GlassPanel(
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                   TextFormField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
@@ -257,7 +268,9 @@ class _RegisterPageState extends State<RegisterPage> {
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('Ai deja cont? Autentifică-te'),
                   ),
-                ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ),

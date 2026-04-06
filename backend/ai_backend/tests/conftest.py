@@ -21,6 +21,7 @@ from ai_backend.common.auth import get_current_user_id
 from ai_backend.common.llm import get_llm
 from ai_backend.common.prompts import PROMPTS
 from ai_backend.langfuse.prompts import PromptComposer, create_prompt_composer, get_prompt_composer
+from ai_backend.services.clarify_guardrails.models import ClarifyGuardrailsOutput
 from ai_backend.services.clarify_with_steps.models import GuidedLearningPrerequisitesOutput
 from ai_backend.services.solve_problem.models import (
     SolveProblemIntentDetection,
@@ -58,7 +59,19 @@ def _default_mock_llm() -> MagicMock:
     def _with_structured_output(schema: Any, **kwargs: Any) -> MagicMock:
         name = getattr(schema, "__name__", type(schema).__name__)
         chain = MagicMock()
-        if name == "GuidedLearningPrerequisitesOutput":
+        if name == "ClarifyGuardrailsOutput":
+            chain.ainvoke = AsyncMock(
+                return_value={
+                    "raw": MagicMock(content=""),
+                    "parsed": ClarifyGuardrailsOutput(
+                        allow=True,
+                        reason_code="allowed",
+                        student_facing_message_ro="",
+                    ),
+                    "parsing_error": None,
+                }
+            )
+        elif name == "GuidedLearningPrerequisitesOutput":
             chain.ainvoke = AsyncMock(
                 return_value={
                     "raw": MagicMock(content=""),

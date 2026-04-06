@@ -34,6 +34,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from ai_backend.config import settings as app_settings
+from ai_backend.services.clarify_guardrails.models import ClarifyGuardrailsOutput
 from ai_backend.services.clarify_with_steps.models import GuidedLearningPrerequisitesOutput
 from ai_backend.services.clarify_with_steps.graph import (
     StepByStepLearningState,
@@ -79,21 +80,39 @@ async def _query_langfuse_trace(trace_id: str, *, timeout: float = 20.0) -> dict
 def _make_completion_mock_llm() -> MagicMock:
     """
     Return an LLM mock where:
-    - ``with_structured_output`` → returns 1 prerequisite ("Concept A").
+    - ``with_structured_output(ClarifyGuardrailsOutput)`` → allow pass (first graph node).
+    - ``with_structured_output(GuidedLearningPrerequisitesOutput)`` → one prerequisite.
     - ``ainvoke`` → returns AIMessage with "putem trece" (triggers graph completion).
-    - ``astream`` → not used in the no-queue path.
+    - ``astream`` → used when stream_queue is set in configurable.
     """
     mock_llm = MagicMock()
 
-    structured_chain = MagicMock()
-    structured_chain.ainvoke = AsyncMock(
-        return_value={
-            "raw": MagicMock(content=""),
-            "parsed": GuidedLearningPrerequisitesOutput(prerequisites=["Concept A"]),
-            "parsing_error": None,
-        }
-    )
-    mock_llm.with_structured_output = MagicMock(return_value=structured_chain)
+    def _with_structured_output(schema: Any, **kwargs: Any) -> MagicMock:
+        name = getattr(schema, "__name__", type(schema).__name__)
+        chain = MagicMock()
+        if name == "ClarifyGuardrailsOutput":
+            chain.ainvoke = AsyncMock(
+                return_value={
+                    "raw": MagicMock(content=""),
+                    "parsed": ClarifyGuardrailsOutput(
+                        allow=True,
+                        reason_code="allowed",
+                        student_facing_message_ro="",
+                    ),
+                    "parsing_error": None,
+                }
+            )
+        else:
+            chain.ainvoke = AsyncMock(
+                return_value={
+                    "raw": MagicMock(content=""),
+                    "parsed": GuidedLearningPrerequisitesOutput(prerequisites=["Concept A"]),
+                    "parsing_error": None,
+                }
+            )
+        return chain
+
+    mock_llm.with_structured_output = MagicMock(side_effect=_with_structured_output)
 
     # "putem trece" is in the completion_indicators list → should_advance=True
     mock_llm.ainvoke = AsyncMock(
@@ -110,6 +129,29 @@ def _make_completion_mock_llm() -> MagicMock:
     return mock_llm
 
 
+def _langfuse_singleton_exports_traces(client: Any) -> bool:
+    """
+    Return True when ``client`` is the process singleton already wired for OTel export.
+
+    Creating a second ``Langfuse()`` instance triggers the SDK guard that skips LangChain
+    tracing entirely (\"multiple langfuse clients\"), which breaks these integration tests
+    when the FastAPI lifespan has already called ``create_langfuse_client``.
+    """
+    if client is None:
+        return False
+    if not getattr(client, "_tracing_enabled", False):
+        return False
+    resources = getattr(client, "_resources", None)
+    if resources is None:
+        return False
+    pk = getattr(resources, "public_key", None)
+    if not pk or pk == "fake":
+        return False
+    if getattr(resources, "tracer", None) is None:
+        return False
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Module-scoped fixtures: real Langfuse client + prompt composer
 # ---------------------------------------------------------------------------
@@ -117,8 +159,8 @@ def _make_completion_mock_llm() -> MagicMock:
 @pytest.fixture(scope="module")
 def real_langfuse_client():
     """
-    Initialize a real Langfuse client.
-    Skips the module if credentials are not configured.
+    Use the existing Langfuse singleton when it already exports traces (e.g. after app
+    lifespan); otherwise initialise once. Avoids a second client that disables tracing.
     """
     import ai_backend.langfuse.client as client_mod
     from ai_backend.langfuse.client import create_langfuse_client
@@ -127,9 +169,18 @@ def real_langfuse_client():
         pytest.skip("LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY not set — skipping integration test")
 
     previous = client_mod._client
+
+    if _langfuse_singleton_exports_traces(previous):
+        yield previous
+        return
+
     lf = create_langfuse_client(app_settings)
-    yield lf
-    client_mod._client = previous
+    try:
+        yield lf
+    finally:
+        # If nothing was installed before, keep the new client for the rest of the suite.
+        if previous is not None:
+            client_mod._client = previous
 
 
 @pytest.fixture(scope="module")
@@ -290,6 +341,9 @@ async def test_graph_chain_span_visible_in_langfuse(real_langfuse_client, real_p
         "current_prerequisite_index": 0,
         "prerequisites_completed": False,
         "progress_preview_sent": False,
+        "guardrails_context": "",
+        "guardrails_allowed": False,
+        "guardrails_block_message_ro": "",
     }
 
     async with langfuse_trace_context(
@@ -336,7 +390,7 @@ async def test_clarify_with_steps_graph_node_spans_in_langfuse(
     appear in Langfuse.
 
     Graph path:
-      generate_prerequisites → ask_question  (ainvoke returns "putem trece" → completes)
+      clarify_guardrails → generate_prerequisites → ask_question  (ainvoke returns "putem trece" → completes)
       → final_explanation → END
 
     The LangGraph ``CallbackHandler`` automatically creates per-node observations via
@@ -358,6 +412,9 @@ async def test_clarify_with_steps_graph_node_spans_in_langfuse(
         "current_prerequisite_index": 0,
         "prerequisites_completed": False,
         "progress_preview_sent": False,
+        "guardrails_context": "",
+        "guardrails_allowed": False,
+        "guardrails_block_message_ro": "",
     }
 
     async with langfuse_trace_context(
@@ -385,7 +442,12 @@ async def test_clarify_with_steps_graph_node_spans_in_langfuse(
 
     # LangGraph's CallbackHandler creates observations named after the node names
     # registered via workflow.add_node("name", ...) — not the Python function names.
-    expected_nodes = {"generate_prerequisites", "ask_question", "final_explanation"}
+    expected_nodes = {
+        "clarify_guardrails",
+        "generate_prerequisites",
+        "ask_question",
+        "final_explanation",
+    }
     missing = expected_nodes - set(obs_names)
 
     assert not missing, (
@@ -430,6 +492,9 @@ async def test_clarify_with_steps_graph_node_spans_via_create_task(
         "current_prerequisite_index": 0,
         "prerequisites_completed": False,
         "progress_preview_sent": False,
+        "guardrails_context": "",
+        "guardrails_allowed": False,
+        "guardrails_block_message_ro": "",
     }
 
     async with langfuse_trace_context(
@@ -472,7 +537,12 @@ async def test_clarify_with_steps_graph_node_spans_via_create_task(
     print(f"[INFO] trace_id={trace_id}")
     print(f"[INFO] observation names (create_task pattern)={obs_names}")
 
-    expected_nodes = {"generate_prerequisites", "ask_question", "final_explanation"}
+    expected_nodes = {
+        "clarify_guardrails",
+        "generate_prerequisites",
+        "ask_question",
+        "final_explanation",
+    }
     missing = expected_nodes - set(obs_names)
 
     assert not missing, (
