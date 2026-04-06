@@ -15,7 +15,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from ai_backend.common.conversation_history import resolve_effective_history
 from ai_backend.common.models import Message
-from ai_backend.common.prompts import PROMPTS
+from ai_backend.langfuse.context import langfuse_trace_context, resolve_session_id
+from ai_backend.langfuse.prompts import PromptComposer
 from profu_logging.feature_logger import get_feature_logger
 from ai_backend.common.streaming.sse import (
     SSE_GENERIC_USER_ERROR,
@@ -35,7 +36,10 @@ async def stream_clarify_once(
     conversation_id: int | None,
     user_id: UUID,
     llm: LangGraphChatModel,
+    composer: PromptComposer,
     supabase_client: Optional[Any] = None,
+    trace_id: Optional[str] = None,
+    session_id: Optional[str] = None,
 ):
     """
     Async generator that streams clarify-once SSE messages.
@@ -46,7 +50,10 @@ async def stream_clarify_once(
         conversation_id: Optional conversation id to load history from Supabase.
         user_id: Authenticated user id.
         llm: LangChain chat model that supports `astream`.
+        composer: PromptComposer for loading system prompts.
         supabase_client: Supabase client (optional).
+        trace_id: Optional Langfuse trace id (32-char hex).
+        session_id: Optional Langfuse session id for grouping traces.
 
     Yields:
         SSE-formatted strings (`data: ...\\n\\n`).
@@ -59,7 +66,7 @@ async def stream_clarify_once(
             yield emit_done()
             return
 
-        system_prompt = PROMPTS["clarify_chat"]["system_prompt"]
+        system_prompt = composer.get("clarify_chat")
         messages: list[Any] = [SystemMessage(content=system_prompt)]
 
         history = resolve_effective_history(
@@ -81,14 +88,21 @@ async def stream_clarify_once(
         start_time = time.time()
         first_token_received = False
 
-        async for chunk in llm.astream(messages):
-            if not getattr(chunk, "content", None):
-                continue
-            if not first_token_received:
-                yield emit_meta_ttft(start_time)
-                first_token_received = True
-            yield sse_data_line(escape_sse_data(chunk.content))
-            await asyncio.sleep(0.01)
+        async with langfuse_trace_context(
+            trace_id=trace_id,
+            session_id=resolve_session_id(session_id, conversation_id),
+            user_id=str(user_id),
+            name="clarify_once",
+            tags=["clarify"],
+        ) as langfuse_config:
+            async for chunk in llm.astream(messages, config=langfuse_config):
+                if not getattr(chunk, "content", None):
+                    continue
+                if not first_token_received:
+                    yield emit_meta_ttft(start_time)
+                    first_token_received = True
+                yield sse_data_line(escape_sse_data(chunk.content))
+                await asyncio.sleep(0.01)
 
         yield emit_done()
     except Exception as e:

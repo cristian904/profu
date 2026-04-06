@@ -4,6 +4,8 @@ Shared pytest fixtures for ai_backend tests.
 - Default auth override: Depends(get_current_user_id) returns a stable fake UUID.
 - Default LLM override: Depends(get_llm) returns an AsyncMock so tests do not require
   GOOGLE_API_KEY (patching router modules does not affect FastAPI Depends() bindings).
+- PromptComposer: initialised once (session-scoped) in YAML-only mode so service code
+  can call ``get_prompt_composer()`` without Langfuse keys.
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ import pytest
 from ai_backend.main import app
 from ai_backend.common.auth import get_current_user_id
 from ai_backend.common.llm import get_llm
+from ai_backend.common.prompts import PROMPTS
+from ai_backend.langfuse.prompts import PromptComposer, create_prompt_composer, get_prompt_composer
 from ai_backend.services.clarify_with_steps.models import GuidedLearningPrerequisitesOutput
 from ai_backend.services.solve_problem.models import (
     SolveProblemIntentDetection,
@@ -33,16 +37,20 @@ def _default_mock_llm() -> MagicMock:
     """
     mock_llm = MagicMock()
 
+    # Include a prerequisite-completion phrase so clarify step-by-step does not loop forever:
+    # nodes.ask_prerequisite_question advances only when content matches completion_indicators.
+    _MOCK_LLM_REPLY = "Test response — foarte bine, ai înțeles; putem trece mai departe."
+
     async def _astream_impl(*args: object, **kwargs: object):
         chunk = MagicMock()
-        chunk.content = "Test response"
+        chunk.content = _MOCK_LLM_REPLY
         yield chunk
 
     mock_llm.astream = MagicMock(side_effect=_astream_impl)
 
     async def _plain_ainvoke_impl(*args: object, **kwargs: object) -> MagicMock:
         response = MagicMock()
-        response.content = "Test response"
+        response.content = _MOCK_LLM_REPLY
         return response
 
     mock_llm.ainvoke = AsyncMock(side_effect=_plain_ainvoke_impl)
@@ -80,6 +88,21 @@ def _default_mock_llm() -> MagicMock:
 
     mock_llm.with_structured_output = MagicMock(side_effect=_with_structured_output)
     return mock_llm
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _init_prompt_composer() -> None:
+    """Initialise PromptComposer in YAML-only mode for the test session."""
+    try:
+        get_prompt_composer()
+    except RuntimeError:
+        create_prompt_composer(langfuse_client=None, yaml_prompts=PROMPTS)
+
+
+@pytest.fixture
+def prompt_composer() -> PromptComposer:
+    """Provide PromptComposer to tests."""
+    return get_prompt_composer()
 
 
 @pytest.fixture(autouse=True)

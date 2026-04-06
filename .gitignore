@@ -50,3 +50,6 @@ backend/crawler/downloads_exams/
 
 # Pipeline runs
 backend/exam_parser/runs/
+
+# Langfuse local instance
+.langfuse/

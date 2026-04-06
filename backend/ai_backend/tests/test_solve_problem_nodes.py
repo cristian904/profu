@@ -41,9 +41,9 @@ def _base_state(**kwargs: Any) -> ProblemSolvingState:
 class TestDetectIntentNode:
     """Tests for make_detect_intent_node."""
 
-    async def test_initial_short_message_sets_initial_question(self) -> None:
+    async def test_initial_short_message_sets_initial_question(self, prompt_composer) -> None:
         llm = MagicMock()
-        node = make_detect_intent_node(llm)
+        node = make_detect_intent_node(llm, prompt_composer)
         state = _base_state(
             messages=[HumanMessage(content="hi")],
             problem_text="2+2",
@@ -53,7 +53,7 @@ class TestDetectIntentNode:
         assert "2+2" in (out["messages"][-1].content or "")
         llm.ainvoke.assert_not_called()
 
-    async def test_json_intent_from_llm(self) -> None:
+    async def test_json_intent_from_llm(self, prompt_composer) -> None:
         llm = MagicMock()
         structured = MagicMock()
         structured.ainvoke = AsyncMock(
@@ -64,14 +64,14 @@ class TestDetectIntentNode:
             }
         )
         llm.with_structured_output = MagicMock(return_value=structured)
-        node = make_detect_intent_node(llm)
+        node = make_detect_intent_node(llm, prompt_composer)
         state = _base_state(
             messages=[HumanMessage(content="x" * 55)],
         )
         out = await node(state)
         assert out["intent"] == "progress"
 
-    async def test_keyword_fallback_solve(self) -> None:
+    async def test_keyword_fallback_solve(self, prompt_composer) -> None:
         llm = MagicMock()
         structured = MagicMock()
         structured.ainvoke = AsyncMock(
@@ -82,7 +82,7 @@ class TestDetectIntentNode:
             }
         )
         llm.with_structured_output = MagicMock(return_value=structured)
-        node = make_detect_intent_node(llm)
+        node = make_detect_intent_node(llm, prompt_composer)
         state = _base_state(
             messages=[HumanMessage(content="y" * 55)],
         )
@@ -94,9 +94,9 @@ class TestDetectIntentNode:
 class TestProvideHintNode:
     """Tests for make_provide_hint_node."""
 
-    async def test_initial_question_streams_existing_then_none(self) -> None:
+    async def test_initial_question_streams_existing_then_none(self, prompt_composer) -> None:
         llm = MagicMock()
-        node = make_provide_hint_node(llm)
+        node = make_provide_hint_node(llm, prompt_composer)
         q: asyncio.Queue = asyncio.Queue()
         cfg = {"configurable": {"stream_queue": q}}
         ai = AIMessage(content="Hello student")
@@ -106,10 +106,10 @@ class TestProvideHintNode:
         assert q.get_nowait() == "Hello student"
         assert q.get_nowait() is None
 
-    async def test_no_stream_ainvoke(self) -> None:
+    async def test_no_stream_ainvoke(self, prompt_composer) -> None:
         llm = MagicMock()
         llm.ainvoke = AsyncMock(return_value=AIMessage(content="hint"))
-        node = make_provide_hint_node(llm)
+        node = make_provide_hint_node(llm, prompt_composer)
         state = _base_state(
             intent="new_hint",
             messages=[HumanMessage(content="help")],
@@ -124,15 +124,15 @@ class TestProvideHintNode:
 class TestOtherNodes:
     """evaluate_progress, detect_progress_intent, explain_error, provide_solution."""
 
-    async def test_evaluate_progress_with_human_last(self) -> None:
+    async def test_evaluate_progress_with_human_last(self, prompt_composer) -> None:
         llm = MagicMock()
         llm.ainvoke = AsyncMock(return_value=AIMessage(content="ok"))
-        node = make_evaluate_progress_node(llm)
+        node = make_evaluate_progress_node(llm, prompt_composer)
         state = _base_state(messages=[HumanMessage(content="my work")])
         out = await node(state)
         assert out["student_work"] == "my work"
 
-    async def test_detect_progress_intent_json(self) -> None:
+    async def test_detect_progress_intent_json(self, prompt_composer) -> None:
         llm = MagicMock()
         structured = MagicMock()
         structured.ainvoke = AsyncMock(
@@ -143,12 +143,12 @@ class TestOtherNodes:
             }
         )
         llm.with_structured_output = MagicMock(return_value=structured)
-        node = make_detect_progress_intent_node(llm)
+        node = make_detect_progress_intent_node(llm, prompt_composer)
         state = _base_state(messages=[AIMessage(content="eval")])
         out = await node(state)
         assert out["intent"] == "bad"
 
-    async def test_detect_progress_intent_keyword_good(self) -> None:
+    async def test_detect_progress_intent_keyword_good(self, prompt_composer) -> None:
         llm = MagicMock()
         structured = MagicMock()
         structured.ainvoke = AsyncMock(
@@ -159,19 +159,19 @@ class TestOtherNodes:
             }
         )
         llm.with_structured_output = MagicMock(return_value=structured)
-        node = make_detect_progress_intent_node(llm)
+        node = make_detect_progress_intent_node(llm, prompt_composer)
         state = _base_state(messages=[])
         out = await node(state)
         assert out["intent"] == "good"
 
-    async def test_explain_error_ainvoke(self) -> None:
+    async def test_explain_error_ainvoke(self, prompt_composer) -> None:
         llm = MagicMock()
         llm.ainvoke = AsyncMock(return_value=AIMessage(content="err"))
-        node = make_explain_error_node(llm)
+        node = make_explain_error_node(llm, prompt_composer)
         out = await node(_base_state(), config=None)
         assert out["messages"][-1].content == "err"
 
-    async def test_provide_solution_stream(self) -> None:
+    async def test_provide_solution_stream(self, prompt_composer) -> None:
         llm = MagicMock()
 
         async def _chunks():
@@ -179,7 +179,7 @@ class TestOtherNodes:
             yield MagicMock(content="b")
 
         llm.astream = MagicMock(return_value=_chunks())
-        node = make_provide_solution_node(llm)
+        node = make_provide_solution_node(llm, prompt_composer)
         q: asyncio.Queue = asyncio.Queue()
         out = await node(_base_state(), config={"configurable": {"stream_queue": q}})
         assert out["full_solution_requested"] is True

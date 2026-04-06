@@ -46,14 +46,14 @@ def _drain_queue_text(q: asyncio.Queue) -> str:
 
 
 @pytest.mark.asyncio
-async def test_generate_prerequisites_parsed_none_streams_fallback() -> None:
+async def test_generate_prerequisites_parsed_none_streams_fallback(prompt_composer) -> None:
     """When structured output is missing, stream chars then empty prerequisites."""
     mock_llm = MagicMock()
     chain = MagicMock()
     chain.ainvoke = AsyncMock(return_value={"raw": None, "parsed": None, "parsing_error": "x"})
     mock_llm.with_structured_output.return_value = chain
 
-    node = make_generate_prerequisites_node(mock_llm)
+    node = make_generate_prerequisites_node(mock_llm, prompt_composer)
     q: asyncio.Queue = asyncio.Queue()
     out = await node(
         _base_state(),
@@ -67,7 +67,7 @@ async def test_generate_prerequisites_parsed_none_streams_fallback() -> None:
 
 
 @pytest.mark.asyncio
-async def test_generate_prerequisites_empty_list_preview() -> None:
+async def test_generate_prerequisites_empty_list_preview(prompt_composer) -> None:
     """Empty prerequisite list should still emit the short start message."""
     mock_llm = MagicMock()
     chain = MagicMock()
@@ -77,7 +77,7 @@ async def test_generate_prerequisites_empty_list_preview() -> None:
     )
     mock_llm.with_structured_output.return_value = chain
 
-    node = make_generate_prerequisites_node(mock_llm)
+    node = make_generate_prerequisites_node(mock_llm, prompt_composer)
     q: asyncio.Queue = asyncio.Queue()
     out = await node(_base_state(), config={"configurable": {"stream_queue": q}})
 
@@ -87,10 +87,10 @@ async def test_generate_prerequisites_empty_list_preview() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ask_prerequisite_question_short_circuits_when_index_past_end() -> None:
+async def test_ask_prerequisite_question_short_circuits_when_index_past_end(prompt_composer) -> None:
     """If index is past prerequisites, mark completed without calling the LLM."""
     mock_llm = MagicMock()
-    node = make_ask_prerequisite_question_node(mock_llm)
+    node = make_ask_prerequisite_question_node(mock_llm, prompt_composer)
     state = _base_state(prerequisites=[], current_prerequisite_index=1)
     out = await node(state, config={})
     assert out["prerequisites_completed"] is True
@@ -99,12 +99,12 @@ async def test_ask_prerequisite_question_short_circuits_when_index_past_end() ->
 
 
 @pytest.mark.asyncio
-async def test_ask_prerequisite_question_no_stream_queue_uses_ainvoke() -> None:
+async def test_ask_prerequisite_question_no_stream_queue_uses_ainvoke(prompt_composer) -> None:
     """Without stream_queue, node should use plain ainvoke."""
     mock_llm = MagicMock()
     mock_llm.astream = MagicMock()
     mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="răspuns fără indicator"))
-    node = make_ask_prerequisite_question_node(mock_llm)
+    node = make_ask_prerequisite_question_node(mock_llm, prompt_composer)
     state = _base_state(prerequisites=["Limite"], current_prerequisite_index=0)
     out = await node(state, config={})
     assert isinstance(out["messages"][-1], AIMessage)
@@ -113,12 +113,12 @@ async def test_ask_prerequisite_question_no_stream_queue_uses_ainvoke() -> None:
 
 
 @pytest.mark.asyncio
-async def test_provide_final_explanation_no_stream_queue() -> None:
+async def test_provide_final_explanation_no_stream_queue(prompt_composer) -> None:
     """Final node without queue should call ainvoke once."""
     mock_llm = MagicMock()
     mock_llm.astream = MagicMock()
     mock_llm.ainvoke = AsyncMock(return_value=AIMessage(content="final"))
-    node = make_provide_final_explanation_node(mock_llm)
+    node = make_provide_final_explanation_node(mock_llm, prompt_composer)
     state = _base_state(prerequisites=["A", "B"])
     out = await node(state, config={})
     assert out["messages"][-1].content == "final"
@@ -126,7 +126,7 @@ async def test_provide_final_explanation_no_stream_queue() -> None:
 
 
 @pytest.mark.asyncio
-async def test_ask_prerequisite_question_advances_on_completion_keyword() -> None:
+async def test_ask_prerequisite_question_advances_on_completion_keyword(prompt_composer) -> None:
     """Heuristic should bump index when assistant signals understanding."""
     mock_llm = MagicMock()
 
@@ -136,7 +136,7 @@ async def test_ask_prerequisite_question_advances_on_completion_keyword() -> Non
         yield chunk
 
     mock_llm.astream = fake_astream
-    node = make_ask_prerequisite_question_node(mock_llm)
+    node = make_ask_prerequisite_question_node(mock_llm, prompt_composer)
     state = _base_state(prerequisites=["A", "B"], current_prerequisite_index=0)
     q: asyncio.Queue = asyncio.Queue()
     out = await node(state, config={"configurable": {"stream_queue": q}})

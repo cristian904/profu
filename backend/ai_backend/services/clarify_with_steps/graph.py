@@ -41,15 +41,15 @@ from ai_backend.services.clarify_with_steps.nodes import (  # noqa: E402
 )
 
 
-def build_step_by_step_learning_graph(llm: LangGraphChatModel):
+def build_step_by_step_learning_graph(llm: LangGraphChatModel, composer: "PromptComposer"):  # noqa: F821
     """
-    Build the step-by-step learning state graph with injected LLM.
+    Build the step-by-step learning state graph with injected LLM and PromptComposer.
     """
     workflow = StateGraph(StepByStepLearningState)
 
-    workflow.add_node("generate_prerequisites", make_generate_prerequisites_node(llm))
-    workflow.add_node("ask_question", make_ask_prerequisite_question_node(llm))
-    workflow.add_node("final_explanation", make_provide_final_explanation_node(llm))
+    workflow.add_node("generate_prerequisites", make_generate_prerequisites_node(llm, composer))
+    workflow.add_node("ask_question", make_ask_prerequisite_question_node(llm, composer))
+    workflow.add_node("final_explanation", make_provide_final_explanation_node(llm, composer))
 
     workflow.set_entry_point("generate_prerequisites")
 

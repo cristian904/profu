@@ -2,6 +2,8 @@
 Pydantic request/response models for the solve-problem feature.
 """
 
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 from ai_backend.common.models import Message
@@ -35,6 +37,9 @@ class ProblemSolveRequest(BaseModel):
     problem_text: str
     history: list[Message] = []  # Optional; BE may load from DB instead
     conversation_id: int | None = None  # Optional Supabase conversation id (preferred for history loading)
+    # Langfuse tracing (optional; generated server-side when absent)
+    trace_id: Optional[str] = Field(default=None, description="32-char lowercase hex Langfuse trace id")
+    session_id: Optional[str] = Field(default=None, description="Logical session id for grouping traces")
 
 
 class SuggestProblemRequest(BaseModel):

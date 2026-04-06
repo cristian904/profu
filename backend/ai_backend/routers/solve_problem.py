@@ -12,6 +12,8 @@ import time
 
 from ai_backend.config import settings
 from ai_backend.common.conversation_history import resolve_effective_history
+from ai_backend.langfuse.context import langfuse_trace_context, resolve_session_id
+from ai_backend.langfuse.prompts import PromptComposer, get_prompt_composer
 from profu_logging.feature_logger import get_feature_logger
 from profu_logging.log_utils import log_json
 from ai_backend.common.streaming.sse import (
@@ -132,7 +134,7 @@ async def upload_problem_image(
             user_id=user_id,
             traceback=None,
         )
-        problem_text = await perform_ocr(image_bytes)
+        problem_text = await perform_ocr(image_bytes, user_id=user_id)
         log_json(
             source="solve_problem_upload",
             level="info",
@@ -285,6 +287,7 @@ async def solve_problem_stream(
     request: ProblemSolveRequest,
     user_id: UUID = Depends(get_current_user_id),
     llm: LangGraphChatModel = Depends(get_llm),
+    composer: PromptComposer = Depends(get_prompt_composer),
     supabase=Depends(get_supabase_client),
 ):
     """
@@ -399,7 +402,6 @@ async def solve_problem_stream(
             
             # Run the graph with a stream queue so content nodes can push chunks in real time
             stream_queue: asyncio.Queue = asyncio.Queue()
-            config = {"configurable": {"stream_queue": stream_queue}}
             log_json(
                 source="solve_problem_stream",
                 level="info",
@@ -407,41 +409,55 @@ async def solve_problem_stream(
                 user_id=user_id,
                 traceback=None,
             )
-            graph = build_problem_solving_graph(llm)
-            invoke_task = asyncio.create_task(graph.ainvoke(initial_state, config=config))
+            graph = build_problem_solving_graph(llm, composer)
 
-            # Consume queue: [THINKING], then content chunks, then None sentinel
-            first_content_chunk = True
-            stream_timeout = 1.0
-            while True:
-                try:
-                    item = await asyncio.wait_for(stream_queue.get(), timeout=stream_timeout)
-                except asyncio.TimeoutError:
-                    if invoke_task.done():
-                        if invoke_task.exception() is not None:
-                            raise invoke_task.exception()
-                        # Task succeeded but no content node ran or no sentinel was put
+            async with langfuse_trace_context(
+                trace_id=request.trace_id,
+                session_id=resolve_session_id(request.session_id, request.conversation_id),
+                user_id=str(user_id),
+                name="solve_problem",
+                tags=["solve_problem"],
+            ) as langfuse_config:
+                # Merge langfuse callbacks into the LangGraph config
+                config = {
+                    "configurable": {"stream_queue": stream_queue},
+                    **langfuse_config,
+                }
+                invoke_task = asyncio.create_task(graph.ainvoke(initial_state, config=config))
+
+                # Consume queue: [THINKING], then content chunks, then None sentinel
+                first_content_chunk = True
+                stream_timeout = 1.0
+                while True:
+                    try:
+                        item = await asyncio.wait_for(stream_queue.get(), timeout=stream_timeout)
+                    except asyncio.TimeoutError:
+                        if invoke_task.done():
+                            if invoke_task.exception() is not None:
+                                raise invoke_task.exception()
+                            # Task succeeded but no content node ran or no sentinel was put
+                            break
+                        continue
+                    if item is None:
                         break
-                    continue
-                if item is None:
-                    break
-                if item == "[THINKING]":
-                    yield "data: [THINKING]\n\n"
-                    continue
-                # Content chunk
-                if first_content_chunk:
-                    log_json(
-                        source="solve_problem_stream",
-                        level="info",
-                        message="Time to first token (meta emitted)",
-                        user_id=user_id,
-                        traceback=None,
-                    )
-                    yield emit_meta_ttft(start_time)
-                    first_content_chunk = False
-                yield sse_data_line(escape_sse_data(item))
+                    if item == "[THINKING]":
+                        yield "data: [THINKING]\n\n"
+                        continue
+                    # Content chunk
+                    if first_content_chunk:
+                        log_json(
+                            source="solve_problem_stream",
+                            level="info",
+                            message="Time to first token (meta emitted)",
+                            user_id=user_id,
+                            traceback=None,
+                        )
+                        yield emit_meta_ttft(start_time)
+                        first_content_chunk = False
+                    yield sse_data_line(escape_sse_data(item))
 
-            await invoke_task
+                await invoke_task
+
             log_json(
                 source="solve_problem_stream",
                 level="info",

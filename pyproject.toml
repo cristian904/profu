@@ -41,6 +41,8 @@ flutter_run = { shell = "flutter run -d chrome", cwd = "flutter_app" }
 ui = ["copy_env_flutter", "flutter_run"]
 # --ignore-health-checks: allows start on Docker Desktop when vector container is unhealthy (connection refused to Docker socket)
 supabase = { shell = "npx supabase start --ignore-health-check" }
+# Local Langfuse v3 stack (Docker): UI on LANGFUSE_PORT or 3000. See scripts/README.md.
+langfuse = { shell = "bash scripts/start-langfuse.sh" }
 test = ["test_ai", "test_ui"]
 # exam_parser only; terminal ends with Coverage.py TOTAL (percentage).
 test_ep = "pytest backend/exam_parser/tests -v --cov=exam_parser --cov-report=term-missing"

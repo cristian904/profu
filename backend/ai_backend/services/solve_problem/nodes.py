@@ -10,8 +10,9 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 
 from profu_logging.feature_logger import get_feature_logger
-from ai_backend.common.prompts import PROMPTS
 from ai_backend.common.protocols import LangGraphChatModel
+from ai_backend.langfuse.context import llm_config
+from ai_backend.langfuse.prompts import PromptComposer
 from ai_backend.common.structured_output import coerce_structured_output
 from ai_backend.services.solve_problem.graph import ProblemSolvingState, user_id_from_state
 from ai_backend.services.solve_problem.models import (
@@ -22,11 +23,14 @@ from ai_backend.services.solve_problem.models import (
 LOG = get_feature_logger(source="solve_problem_langgraph")
 
 
-def make_detect_intent_node(llm: LangGraphChatModel):
+def make_detect_intent_node(llm: LangGraphChatModel, composer: PromptComposer):
     """Factory: Node 1 — detect user intent."""
     intent_llm = llm.with_structured_output(SolveProblemIntentDetection, include_raw=True)
 
-    async def detect_intent(state: ProblemSolvingState) -> ProblemSolvingState:
+    async def detect_intent(
+        state: ProblemSolvingState, config: RunnableConfig | None = None
+    ) -> ProblemSolvingState:
+        config = config or {}
         LOG.info(
             f"Node 1: detect_intent. Messages in state: {len(state.get('messages', []))}",
             user_id=user_id_from_state(state),
@@ -57,7 +61,7 @@ def make_detect_intent_node(llm: LangGraphChatModel):
                 new_state["messages"] = [initial_message]
                 return new_state
 
-        system_prompt = PROMPTS["problem_solving"]["intent_detector"]["system_prompt"]
+        system_prompt = composer.get("problem_solving.intent_detector")
         messages: list[Any] = [SystemMessage(content=system_prompt)]
 
         if state.get("messages"):
@@ -68,7 +72,7 @@ def make_detect_intent_node(llm: LangGraphChatModel):
             if isinstance(last_message, HumanMessage):
                 messages.append(HumanMessage(content=f"Mesajul elevului: {last_message.content}"))
 
-        structured_result = await intent_llm.ainvoke(messages)
+        structured_result = await intent_llm.ainvoke(messages, config=llm_config(config))
         parsed, raw_text = coerce_structured_output(structured_result, SolveProblemIntentDetection)
         if parsed is not None:
             intent = (parsed.intent or "new_hint").strip() or "new_hint"
@@ -88,7 +92,7 @@ def make_detect_intent_node(llm: LangGraphChatModel):
     return detect_intent
 
 
-def make_provide_hint_node(llm: LangGraphChatModel):
+def make_provide_hint_node(llm: LangGraphChatModel, composer: PromptComposer):
     """Factory: Node 2 — provide hint."""
 
     async def provide_hint(state: ProblemSolvingState, config: RunnableConfig | None = None) -> ProblemSolvingState:
@@ -103,7 +107,7 @@ def make_provide_hint_node(llm: LangGraphChatModel):
                 stream_queue.put_nowait(None)
             return state
 
-        system_prompt = PROMPTS["problem_solving"]["hint_provider"]["system_prompt"]
+        system_prompt = composer.get("problem_solving.hint_provider")
         messages: list[Any] = [SystemMessage(content=system_prompt)]
 
         if state.get("problem_text"):
@@ -121,7 +125,7 @@ def make_provide_hint_node(llm: LangGraphChatModel):
         if stream_queue is not None:
             stream_queue.put_nowait("[THINKING]")
             accumulated: list[str] = []
-            async for chunk in llm.astream(messages):
+            async for chunk in llm.astream(messages, config=llm_config(config)):
                 if getattr(chunk, "content", None):
                     accumulated.append(chunk.content)
                     stream_queue.put_nowait(chunk.content)
@@ -129,18 +133,21 @@ def make_provide_hint_node(llm: LangGraphChatModel):
             response = AIMessage(content=full_content)
             stream_queue.put_nowait(None)
         else:
-            response = await llm.ainvoke(messages)
+            response = await llm.ainvoke(messages, config=llm_config(config))
 
         return {**state, "messages": [response], "hint_level": hint_level}
 
     return provide_hint
 
 
-def make_evaluate_progress_node(llm: LangGraphChatModel):
+def make_evaluate_progress_node(llm: LangGraphChatModel, composer: PromptComposer):
     """Factory: Node 3 — evaluate student progress."""
 
-    async def evaluate_progress(state: ProblemSolvingState) -> ProblemSolvingState:
-        system_prompt = PROMPTS["problem_solving"]["progress_evaluator"]["system_prompt"]
+    async def evaluate_progress(
+        state: ProblemSolvingState, config: RunnableConfig | None = None
+    ) -> ProblemSolvingState:
+        config = config or {}
+        system_prompt = composer.get("problem_solving.progress_evaluator")
         messages: list[Any] = [SystemMessage(content=system_prompt)]
 
         if state.get("problem_text"):
@@ -155,7 +162,7 @@ def make_evaluate_progress_node(llm: LangGraphChatModel):
                 student_work = last_message.content
                 messages.append(SystemMessage(content=f"Progresul elevului: {student_work}"))
 
-        response = await llm.ainvoke(messages)
+        response = await llm.ainvoke(messages, config=llm_config(config))
 
         return {
             **state,
@@ -166,18 +173,21 @@ def make_evaluate_progress_node(llm: LangGraphChatModel):
     return evaluate_progress
 
 
-def make_detect_progress_intent_node(llm: LangGraphChatModel):
+def make_detect_progress_intent_node(llm: LangGraphChatModel, composer: PromptComposer):
     """Factory: Node 4 — classify progress as good vs bad."""
     progress_llm = llm.with_structured_output(SolveProblemProgressIntent, include_raw=True)
 
-    async def detect_progress_intent(state: ProblemSolvingState) -> ProblemSolvingState:
-        system_prompt = PROMPTS["problem_solving"]["progress_intent_detector"]["system_prompt"]
+    async def detect_progress_intent(
+        state: ProblemSolvingState, config: RunnableConfig | None = None
+    ) -> ProblemSolvingState:
+        config = config or {}
+        system_prompt = composer.get("problem_solving.progress_intent_detector")
         messages: list[Any] = [SystemMessage(content=system_prompt)]
 
         if state.get("messages"):
             messages.extend(state["messages"][-10:])
 
-        structured_result = await progress_llm.ainvoke(messages)
+        structured_result = await progress_llm.ainvoke(messages, config=llm_config(config))
         parsed, raw_text = coerce_structured_output(structured_result, SolveProblemProgressIntent)
         if parsed is not None:
             progress_intent = (parsed.progress_intent or "good").strip() or "good"
@@ -195,13 +205,13 @@ def make_detect_progress_intent_node(llm: LangGraphChatModel):
     return detect_progress_intent
 
 
-def make_explain_error_node(llm: LangGraphChatModel):
+def make_explain_error_node(llm: LangGraphChatModel, composer: PromptComposer):
     """Factory: Node 5 — explain errors without giving hints."""
 
     async def explain_error(state: ProblemSolvingState, config: RunnableConfig | None = None) -> ProblemSolvingState:
         config = config or {}
         stream_queue = (config.get("configurable") or {}).get("stream_queue")
-        system_prompt = PROMPTS["problem_solving"]["error_explainer"]["system_prompt"]
+        system_prompt = composer.get("problem_solving.error_explainer")
         messages: list[Any] = [SystemMessage(content=system_prompt)]
 
         if state.get("problem_text"):
@@ -213,7 +223,7 @@ def make_explain_error_node(llm: LangGraphChatModel):
         if stream_queue is not None:
             stream_queue.put_nowait("[THINKING]")
             accumulated: list[str] = []
-            async for chunk in llm.astream(messages):
+            async for chunk in llm.astream(messages, config=llm_config(config)):
                 if getattr(chunk, "content", None):
                     accumulated.append(chunk.content)
                     stream_queue.put_nowait(chunk.content)
@@ -221,20 +231,20 @@ def make_explain_error_node(llm: LangGraphChatModel):
             response = AIMessage(content=full_content)
             stream_queue.put_nowait(None)
         else:
-            response = await llm.ainvoke(messages)
+            response = await llm.ainvoke(messages, config=llm_config(config))
 
         return {**state, "messages": [response]}
 
     return explain_error
 
 
-def make_provide_solution_node(llm: LangGraphChatModel):
+def make_provide_solution_node(llm: LangGraphChatModel, composer: PromptComposer):
     """Factory: Node 6 — full solution."""
 
     async def provide_solution(state: ProblemSolvingState, config: RunnableConfig | None = None) -> ProblemSolvingState:
         config = config or {}
         stream_queue = (config.get("configurable") or {}).get("stream_queue")
-        system_prompt = PROMPTS["problem_solving"]["solution_provider"]["system_prompt"]
+        system_prompt = composer.get("problem_solving.solution_provider")
         messages: list[Any] = [SystemMessage(content=system_prompt)]
 
         if state.get("problem_text"):
@@ -246,7 +256,7 @@ def make_provide_solution_node(llm: LangGraphChatModel):
         if stream_queue is not None:
             stream_queue.put_nowait("[THINKING]")
             accumulated: list[str] = []
-            async for chunk in llm.astream(messages):
+            async for chunk in llm.astream(messages, config=llm_config(config)):
                 if getattr(chunk, "content", None):
                     accumulated.append(chunk.content)
                     stream_queue.put_nowait(chunk.content)
@@ -254,7 +264,7 @@ def make_provide_solution_node(llm: LangGraphChatModel):
             response = AIMessage(content=full_content)
             stream_queue.put_nowait(None)
         else:
-            response = await llm.ainvoke(messages)
+            response = await llm.ainvoke(messages, config=llm_config(config))
 
         return {**state, "messages": [response], "full_solution_requested": True}
 

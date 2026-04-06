@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from ai_backend.langfuse.prompts import PromptComposer, get_prompt_composer
 from ai_backend.services.clarify_with_steps.service import stream_clarify_step_by_step
 
 from .common import (
@@ -25,6 +26,7 @@ async def clarify_step_by_step_stream(
     request: QueryRequest,
     user_id: UUID = Depends(get_current_user_id),
     llm: LangGraphChatModel = Depends(get_llm),
+    composer: PromptComposer = Depends(get_prompt_composer),
     supabase=Depends(get_supabase_client),
 ):
     """
@@ -44,7 +46,10 @@ async def clarify_step_by_step_stream(
             conversation_id=request.conversation_id,
             user_id=user_id,
             llm=llm,
+            composer=composer,
             supabase_client=supabase,
+            trace_id=request.trace_id,
+            session_id=request.session_id,
         ),
         media_type="text/event-stream",
         headers={

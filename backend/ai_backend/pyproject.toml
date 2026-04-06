@@ -19,6 +19,7 @@ dependencies = [
     "supabase>=2.0.0",
     "pyjwt>=2.8.0",
     "profu-logging",
+    "langfuse>=3.0.0",
 ]
 
 [project.optional-dependencies]

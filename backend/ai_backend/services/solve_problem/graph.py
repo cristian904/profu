@@ -79,18 +79,18 @@ from ai_backend.services.solve_problem.nodes import (  # noqa: E402
 )
 
 
-def build_problem_solving_graph(llm: LangGraphChatModel):
+def build_problem_solving_graph(llm: LangGraphChatModel, composer: "PromptComposer"):  # noqa: F821
     """
-    Build the problem solving state graph with injected LLM.
+    Build the problem solving state graph with injected LLM and PromptComposer.
     """
     workflow = StateGraph(ProblemSolvingState)
 
-    workflow.add_node("detect_intent", make_detect_intent_node(llm))
-    workflow.add_node("provide_hint", make_provide_hint_node(llm))
-    workflow.add_node("evaluate_progress", make_evaluate_progress_node(llm))
-    workflow.add_node("detect_progress_intent", make_detect_progress_intent_node(llm))
-    workflow.add_node("explain_error", make_explain_error_node(llm))
-    workflow.add_node("provide_solution", make_provide_solution_node(llm))
+    workflow.add_node("detect_intent", make_detect_intent_node(llm, composer))
+    workflow.add_node("provide_hint", make_provide_hint_node(llm, composer))
+    workflow.add_node("evaluate_progress", make_evaluate_progress_node(llm, composer))
+    workflow.add_node("detect_progress_intent", make_detect_progress_intent_node(llm, composer))
+    workflow.add_node("explain_error", make_explain_error_node(llm, composer))
+    workflow.add_node("provide_solution", make_provide_solution_node(llm, composer))
 
     workflow.set_entry_point("detect_intent")
 

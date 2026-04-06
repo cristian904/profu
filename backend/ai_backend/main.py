@@ -12,6 +12,9 @@ from profu_logging.log_utils import ColoredJsonFormatter
 from profu_logging.feature_logger import get_feature_logger
 from ai_backend.routers import clarify_once, clarify_with_steps, solve_problem, simulari
 from ai_backend.common.auth import ensure_jwks_prefetch, get_user_id_from_request
+from ai_backend.common.prompts import PROMPTS
+from ai_backend.langfuse.client import create_langfuse_client
+from ai_backend.langfuse.prompts import create_prompt_composer
 
 # Feature-scoped loggers (preserve `source` values)
 LOG_VALIDATION = get_feature_logger(source="validation")
@@ -43,6 +46,10 @@ _uvicorn_error_logger.addFilter(_SuppressUvicornExceptionLog())
 async def lifespan(app: FastAPI):
     # Prefetch JWKS at startup so first RS256/ES256 request doesn't pay fetch cost
     ensure_jwks_prefetch()
+    # Initialise the Langfuse OTel client (singleton; no-op when keys are empty)
+    langfuse = create_langfuse_client(settings)
+    # PromptComposer: Langfuse Prompt Management with YAML fallback
+    create_prompt_composer(langfuse, PROMPTS)
     yield
 
 
