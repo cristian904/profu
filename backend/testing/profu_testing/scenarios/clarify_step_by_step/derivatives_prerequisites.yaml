@@ -1,0 +1,14 @@
+id: derivatives_prerequisites
+opening_user_message: >
+  Vreau să înțeleg ce este derivata unei funcții la Bac, dar la clasă am rămas în urmă la limite.
+  Poți să mă ajuți pas cu pas?
+scenario_goal: >
+  Student should reach a full conceptual explanation of the derivative (definition as limit,
+  link to rate of change / tangent slope) after prerequisite coverage (limits / intuitive rate).
+user_followups:
+  - "Știu că limita e valoarea către care se apropie funcția, dar nu sunt sigur la formule."
+  - "Da, am înțeles ideea cu panta tangentei."
+  - "Putem face un exemplu simplu, gen f(x)=x²?"
+  - "Deci derivata lui x² e 2x? De ce?"
+  - "Mulțumesc, cred că acum are sens."
+max_turns: 12

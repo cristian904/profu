@@ -1,0 +1,13 @@
+id: classical_probability
+opening_user_message: >
+  Vreau să înțeleg probabilitatea clasică (cazuri favorabile / cazuri posibile) și când o pot folosi.
+  Mă descurc greu la probleme cu bile sau numere extrase.
+scenario_goal: >
+  Student should understand Laplace/classical probability assumptions (finite outcomes,
+  equally likely), counting favorable vs possible, and simple examples (urn, dice, ordered vs unordered where relevant).
+user_followups:
+  - "Deci toate cazurile trebuie să fie la fel de probabile, altfel nu merge formula?"
+  - "Diferența între cu și fără întoarcere mă încurcă — o poți explica pe scurt?"
+  - "Dacă am 3 bile roșii și 2 albastre în urnă, care e probabilitatea să scot roșu la prima extragere?"
+  - "Mulțumesc, mai vreau o frază despre când NU folosesc probabilitatea clasică."
+max_turns: 10

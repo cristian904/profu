@@ -1,0 +1,13 @@
+id: vector_scalar_product
+opening_user_message: >
+  Am nevoie să înțeleg produsul scalar a doi vectori: definiție, cum îl calculez în coordonate
+  și legătura cu unghiul dintre vectori. Explică-mi ca pentru Bac.
+scenario_goal: >
+  Student should grasp scalar (dot) product: algebraic definition in coordinates,
+  geometric meaning (projection / angle), and the formula cos(theta) relation for non-zero vectors.
+user_followups:
+  - "Deci în plan, dacă v=(1,2) și w=(3,-1), cum fac pas cu pas?"
+  - "Ce se întâmplă dacă produsul scalar e zero?"
+  - "Formule cu modulul și cosinus îmi amintesc ceva din geometrie, le legi cu produsul scalar?"
+  - "OK, fac și un mic exercițiu: dacă unghiul e 90°, cos e 0, deci produsul scalar e 0?"
+max_turns: 10

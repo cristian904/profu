@@ -1,0 +1,13 @@
+id: geometric_progression
+opening_user_message: >
+  Nu înțeleg când pot folosi formula sumei primilor n termeni ai unei progresii geometrice
+  și ce înseamnă exact raportul q. Mă poți ghida?
+scenario_goal: >
+  Student should understand geometric progression basics: ratio q, general term, sum formula
+  for q≠1, and when the formula applies (finite n); common Bac-style pitfalls (q=1, |q|<1 infinite sum only if convergent).
+user_followups:
+  - "Deci q e cât se înmulțește fiecare termen cu cel dinainte?"
+  - "Dacă q e 1, formula aia cu 1-q la numitor nu merge, nu?"
+  - "Poți să îmi dai un exemplu numeric mic, cu 3 termeni?"
+  - "La subiectul II trebuie mereu să verific dacă q≠1 înainte să aplic formula?"
+max_turns: 10

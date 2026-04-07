@@ -25,6 +25,7 @@ members = [
     "backend/crawler",
     "backend/exam_parser",
     "backend/logging",
+    "backend/testing",
 ]
 
 [tool.poe.tasks]

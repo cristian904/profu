@@ -9,6 +9,7 @@ members = [
     "exam-parser",
     "profu",
     "profu-logging",
+    "profu-testing",
 ]
 
 [[package]]
@@ -1250,6 +1251,38 @@ requires-dist = [
 name = "profu-logging"
 version = "1.0.0"
 source = { editable = "backend/logging" }
+
+[[package]]
+name = "profu-testing"
+version = "0.1.0"
+source = { editable = "backend/testing" }
+dependencies = [
+    { name = "httpx" },
+    { name = "langchain-core" },
+    { name = "langchain-google-genai" },
+    { name = "langfuse" },
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "langchain-core", specifier = ">=0.3" },
+    { name = "langchain-google-genai", specifier = ">=2.0" },
+    { name = "langfuse", specifier = ">=4.0" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pydantic-settings", specifier = ">=2.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "propcache"

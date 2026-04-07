@@ -1,0 +1,13 @@
+id: logarithm_properties
+opening_user_message: >
+  Mă încurc la proprietățile logaritmului și la domeniul expresiilor cu log.
+  Vreau să le înțeleg ca să rezolv ecuații la Bac.
+scenario_goal: >
+  Student should understand log domain (argument > 0, base > 0, base ≠ 1), core properties
+  (product, quotient, power), and why extraneous solutions appear when solving log equations.
+user_followups:
+  - "De ce trebuie mereu să pun condiții la log(x) și la bază?"
+  - "log(a·b) = log a + log b merge pentru orice a și b?"
+  - "Când ridic la putere ca să scap de log, de ce pot apărea soluții false?"
+  - "Poți un exemplu mic de ecuație log simplă cu verificare la final?"
+max_turns: 10
