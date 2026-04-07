@@ -15,7 +15,13 @@ import "../widgets/profu_drawer.dart";
 import "../widgets/profu_scene_background.dart";
 import "../widgets/simulation_exam_timer_strip.dart";
 import "../widgets/simulation_marking_guide_section.dart";
+import "../widgets/simulation_history_exam_list.dart";
+import "../widgets/simulation_scores_history_chart.dart";
 import "../widgets/simulation_scores_submit_footer.dart";
+import "../services/suggest_similar_problems_api.dart";
+import "../widgets/simulari_similar_problems_sheet_body.dart";
+import "simulation_similar_problems_policy.dart";
+import "solve_problem_page.dart";
 
 /// Label for Bac-style sub-items: `a)`, `b)`, … (falls back to `1.`, `2.` after `z`).
 String _bacSubItemLabel(int index) {
@@ -60,10 +66,27 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
   /// True while per-problem scoring POST is running.
   bool _submittingProblemScores = false;
 
+  /// Istoric: loading / error / rows from Supabase.
+  bool _historyLoading = false;
+  String? _historyError;
+  List<SimulationHistoryEntry> _historyEntries = <SimulationHistoryEntry>[];
+
+  /// True while showing a simulation opened from Istoric (read-only scores, no submit footer).
+  bool _viewingPastSimulation = false;
+
+  /// [SimulationExamProblem.rowId] while RAG suggest is in flight for that card.
+  int? _similarLoadingRowId;
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(_onSimulationTabChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _tabController.index == 0) {
+        _refreshSimulationHistory();
+      }
+    });
     if (kDebugMode) {
       debugPrint("[SIMULARI_UI] SimulationPage initialized");
     }
@@ -71,6 +94,7 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
 
   @override
   void dispose() {
+    _tabController.removeListener(_onSimulationTabChanged);
     _stopExamCountdown();
     _disposeAllProblemScoreControllers();
     _tabController.dispose();
@@ -182,6 +206,55 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
     _examSessionEnded = false;
     if (kDebugMode) {
       debugPrint("[SIMULARI_UI] Exam session reset");
+    }
+  }
+
+  /// When the user switches to Istoric, reload scores from Supabase.
+  void _onSimulationTabChanged() {
+    if (!mounted) {
+      return;
+    }
+    if (_tabController.index != 0 || _tabController.indexIsChanging) {
+      return;
+    }
+    _refreshSimulationHistory();
+  }
+
+  /// Fetches submitted simulation totals for the line chart (Istoric tab).
+  Future<void> _refreshSimulationHistory() async {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _historyLoading = true;
+      _historyError = null;
+    });
+    try {
+      final List<SimulationHistoryEntry> rows =
+          await _simulationRepository.fetchScoredSimulationHistoryForCurrentUser();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _historyEntries = rows;
+        _historyLoading = false;
+        _historyError = null;
+      });
+      if (kDebugMode) {
+        debugPrint("[SIMULARI_UI] History loaded count=${rows.length}");
+      }
+    } catch (error, stackTrace) {
+      if (kDebugMode) {
+        debugPrint("[SIMULARI_UI] History load error: $error");
+        debugPrint("[SIMULARI_UI] History load stack: $stackTrace");
+      }
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _historyLoading = false;
+        _historyError = error.toString();
+      });
     }
   }
 
@@ -330,6 +403,7 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
           content: Text("Punctaje salvate. Total: $persisted p"),
         ),
       );
+      unawaited(_refreshSimulationHistory());
     } catch (error, stackTrace) {
       if (kDebugMode) {
         debugPrint("[SIMULARI_UI] Submit problem scores error: $error");
@@ -352,11 +426,37 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
     }
   }
 
-  /// Loads problem statements from Supabase after the backend created the simulation.
-  Future<void> _loadExamFromSupabase(int simulationId) async {
+  /// Writes [SimulationExamProblem.savedStudentScore] into score text fields after controllers exist.
+  void _applySavedStudentScoresToControllers(List<SimulationExamProblem> problems) {
+    for (final SimulationExamProblem p in problems) {
+      final double? s = p.savedStudentScore;
+      if (s == null) {
+        continue;
+      }
+      final TextEditingController? c = _problemScoreControllers[_problemScoreKey(p)];
+      if (c != null) {
+        c.text = s == s.roundToDouble() ? s.toStringAsFixed(0) : s.toStringAsFixed(1);
+      }
+    }
+  }
+
+  /// Loads problem statements from Supabase (new sim after generate, or [openForReview] from Istoric).
+  Future<void> _loadExamFromSupabase(
+    int simulationId, {
+    bool openForReview = false,
+  }) async {
+    if (openForReview) {
+      _stopExamCountdown();
+    }
     setState(() {
       _loadingExam = true;
       _examLoadError = null;
+      _lastSimulationId = simulationId;
+      if (openForReview) {
+        _viewingPastSimulation = true;
+        _examSessionEnded = true;
+        _examDeadline = null;
+      }
     });
     try {
       final List<SimulationExamProblem> problems =
@@ -371,13 +471,21 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
         _loadingExam = false;
       });
       _syncProblemScoreControllers();
+      _applySavedStudentScoresToControllers(problems);
       if (!mounted) {
         return;
       }
       if (problems.isNotEmpty) {
-        _startExamCountdown();
+        if (!openForReview) {
+          _startExamCountdown();
+        }
       } else {
         _resetExamSession();
+        if (openForReview) {
+          setState(() {
+            _viewingPastSimulation = false;
+          });
+        }
       }
     } catch (error, stackTrace) {
       if (kDebugMode) {
@@ -391,10 +499,37 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
         _examProblems = <SimulationExamProblem>[];
         _loadingExam = false;
         _examLoadError = error.toString();
+        if (openForReview) {
+          _viewingPastSimulation = false;
+        }
       });
       _disposeAllProblemScoreControllers();
       _resetExamSession();
     }
+  }
+
+  /// Opens a scored simulation from Istoric: Simulare tab, barem visible, saved scores, no timer/submit.
+  Future<void> _openPastSimulationFromHistory(int simulationId) async {
+    if (_loadingExam || _isGenerating) {
+      if (kDebugMode) {
+        debugPrint("[SIMULARI_UI] Open past simulation ignored: load or generate in progress");
+      }
+      return;
+    }
+    if (kDebugMode) {
+      debugPrint("[SIMULARI_UI] Open past simulation from history id=$simulationId");
+    }
+    _disposeAllProblemScoreControllers();
+    _stopExamCountdown();
+    setState(() {
+      _examProblems = <SimulationExamProblem>[];
+      _examLoadError = null;
+    });
+    _tabController.animateTo(1);
+    if (!mounted) {
+      return;
+    }
+    await _loadExamFromSupabase(simulationId, openForReview: true);
   }
 
   /// Calls backend endpoint to create a new simulation, then loads the exam from Supabase.
@@ -411,6 +546,7 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
       _isGenerating = true;
       _examProblems = <SimulationExamProblem>[];
       _examLoadError = null;
+      _viewingPastSimulation = false;
     });
     _resetExamSession();
 
@@ -461,9 +597,6 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
 
       final Map<String, dynamic> payload = jsonDecode(response.body) as Map<String, dynamic>;
       final int simulationId = payload["simulation_id"] as int;
-      setState(() {
-        _lastSimulationId = simulationId;
-      });
 
       if (!mounted) {
         return;
@@ -517,7 +650,66 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
       _examProblems = <SimulationExamProblem>[];
       _lastSimulationId = null;
       _examLoadError = null;
+      _viewingPastSimulation = false;
     });
+  }
+
+  /// Istoric tab: pull-to-refresh and line chart of submitted totals.
+  Widget _buildIstoricTab(BuildContext context) {
+    return RefreshIndicator(
+      onRefresh: _refreshSimulationHistory,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: <Widget>[
+          if (_historyLoading && _historyEntries.isEmpty)
+            const SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_historyError != null && _historyEntries.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Text(
+                    "Nu am putut încărca istoricul: $_historyError",
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            )
+          else
+            SliverToBoxAdapter(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  if (_historyLoading)
+                    const LinearProgressIndicator(minHeight: 2),
+                  if (_historyError != null && _historyEntries.isNotEmpty)
+                    Material(
+                      color: Theme.of(context).colorScheme.errorContainer,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(
+                          "Actualizarea istoricului a eșuat: $_historyError",
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onErrorContainer,
+                          ),
+                        ),
+                      ),
+                    ),
+                  SimulationScoresHistoryChart(entries: _historyEntries),
+                  SimulationHistoryExamList(
+                    entries: _historyEntries,
+                    onOpenSimulation: _openPastSimulationFromHistory,
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -539,13 +731,7 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
         child: TabBarView(
           controller: _tabController,
           children: [
-            Center(
-              child: Text(
-                "Istoricul simularilor va fi afisat aici.",
-                style: Theme.of(context).textTheme.bodyLarge,
-                textAlign: TextAlign.center,
-              ),
-            ),
+            _buildIstoricTab(context),
             _buildSimulareTab(context),
           ],
         ),
@@ -592,9 +778,24 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
         if (_lastSimulationId != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              "Simulare #$_lastSimulationId",
-              style: theme.textTheme.labelLarge,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  "Simulare #$_lastSimulationId",
+                  style: theme.textTheme.labelLarge,
+                ),
+                if (_viewingPastSimulation)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      "Vizualizare din istoric — barem și punctaje salvate.",
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         if (_examLoadError != null)
@@ -638,7 +839,8 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
         ),
         if (_examProblems.isNotEmpty &&
             _examSessionEnded &&
-            _lastSimulationId != null)
+            _lastSimulationId != null &&
+            !_viewingPastSimulation)
           SimulationScoresSubmitFooter(
             sumPoints: _sumEnteredScores(),
             maxPointsTotal: _maxPossibleScoreTotal(),
@@ -681,6 +883,80 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
     return const SizedBox.shrink();
   }
 
+  /// Fetches similar problems for one simulation line; shows a sheet with CTA to Rezolvare.
+  Future<void> _onSimilarProblemsTapped(SimulationExamProblem p) async {
+    final String queryText = p.toSimilarityQueryText();
+    if (queryText.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Nu există text suficient pentru căutare."),
+          ),
+        );
+      }
+      return;
+    }
+    if (_similarLoadingRowId != null) {
+      return;
+    }
+    setState(() {
+      _similarLoadingRowId = p.rowId;
+    });
+    if (kDebugMode) {
+      debugPrint(
+        "[SIMULARI_UI] Similar problems request rowId=${p.rowId} query_len=${queryText.length}",
+      );
+    }
+    final SuggestSimilarProblemsResult? result =
+        await SuggestSimilarProblemsApi.suggest(problemText: queryText);
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _similarLoadingRowId = null;
+    });
+    if (result == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Nu am putut încărca sugestiile. Încearcă din nou."),
+        ),
+      );
+      return;
+    }
+    final String conversationPrefix = simulariSimilarProblemsConversationPrefix(
+      viewingPastSimulation: _viewingPastSimulation,
+    );
+    final String conversationTitle =
+        "$conversationPrefix · ${SimulationExamProblem.sectionTitle(p.subjectNumber)}, problema ${p.problemNumber}";
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (BuildContext sheetContext) {
+        final double maxBodyHeight = MediaQuery.of(sheetContext).size.height * 0.5;
+        return SimulariSimilarProblemsSheetBody(
+          message: result.message,
+          maxBodyHeight: maxBodyHeight,
+          onOpenInSolve: () {
+            Navigator.pop(sheetContext);
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (BuildContext _) => SolveProblemPage(
+                  similarProblemsSeed: SimilarProblemsSeed(
+                    message: result.message,
+                    statements: result.statements,
+                    conversationTitle: conversationTitle,
+                  ),
+                ),
+              ),
+            );
+          },
+          onClose: () => Navigator.pop(sheetContext),
+        );
+      },
+    );
+  }
+
   Widget _buildSectionHeader(BuildContext context, int subjectNumber) {
     final ThemeData theme = Theme.of(context);
     final int maxPer = SimulationExamProblem.maxPointsForSubject(subjectNumber);
@@ -703,19 +979,56 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              "Problema ${p.problemNumber} — maxim $maxP p",
-              style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            if (p.topic != null && p.topic!.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 4),
-              Text(
-                p.topic!,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.primary,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        "Problema ${p.problemNumber} — maxim $maxP p",
+                        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      if (p.topic != null && p.topic!.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 4),
+                        Text(
+                          p.topic!,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+                if (simulariShowSimilarProblemsIcon(
+                      examSessionEnded: _examSessionEnded,
+                      viewingPastSimulation: _viewingPastSimulation,
+                    ))
+                  IconButton(
+                    tooltip: "Probleme similare",
+                    onPressed: _similarLoadingRowId != null
+                        ? null
+                        : () {
+                            _onSimilarProblemsTapped(p);
+                          },
+                    icon: _similarLoadingRowId == p.rowId
+                        ? SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: theme.colorScheme.primary,
+                            ),
+                          )
+                        : Icon(
+                            Icons.auto_awesome_outlined,
+                            color: theme.colorScheme.primary,
+                          ),
+                  ),
+              ],
+            ),
             const SizedBox(height: 8),
             LatexMarkdownBody(
               data: p.statement,
@@ -768,6 +1081,7 @@ class _SimulationPageState extends State<SimulationPage> with SingleTickerProvid
               const SizedBox(height: 8),
               TextField(
                 controller: _problemScoreControllers[_problemScoreKey(p)]!,
+                readOnly: _viewingPastSimulation,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: <TextInputFormatter>[
                   FilteringTextInputFormatter.allow(RegExp(r"[0-9.,]")),

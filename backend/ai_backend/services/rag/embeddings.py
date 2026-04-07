@@ -1,5 +1,5 @@
 """
-Embeddings helpers for solve-problem.
+Embeddings helpers for RAG (similar exam problems).
 
 Provides query embedding with Gemini embeddings and normalization.
 """
@@ -59,4 +59,3 @@ def embed_query(text: str) -> list[float]:
         raise HTTPException(status_code=500, detail="Embedding returned no result")
     vals = list(result.embeddings[0].values)
     return normalize_embedding(vals)
-

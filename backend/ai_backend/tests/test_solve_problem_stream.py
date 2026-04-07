@@ -43,7 +43,7 @@ class TestSuggestProblemAuth:
     def test_suggest_problem_401_without_auth(self) -> None:
         """Unauthenticated requests must be rejected."""
         response = client.post(
-            "/solve-problem/suggest-problem",
+            "/rag/suggest-problem",
             json={"problem_text": "x + 1 = 2"},
         )
         # 401 when JWT secret is configured; 503 when auth is not configured in the environment

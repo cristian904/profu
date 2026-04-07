@@ -20,7 +20,7 @@ async def test_validation_exception_handler_returns_422_detail() -> None:
         {
             "type": "http",
             "method": "POST",
-            "path": "/solve-problem/suggest-problem",
+            "path": "/rag/suggest-problem",
             "headers": [],
         }
     )
@@ -58,7 +58,7 @@ def test_suggest_problem_invalid_body_triggers_validation_handler() -> None:
 
     client = TestClient(app)
     response = client.post(
-        "/solve-problem/suggest-problem",
+        "/rag/suggest-problem",
         json={"problem_text": 123},
     )
     assert response.status_code == 422

@@ -17,6 +17,35 @@ void main() {
       expect(SimulationExamProblem.sectionTitle(4), "Subiect 4");
     });
 
+    test("toSimilarityQueryText joins statement and items", () {
+      final SimulationExamProblem p = SimulationExamProblem(
+        rowId: 1,
+        examProblemId: 10,
+        subjectNumber: 2,
+        problemNumber: 1,
+        orderIndex: 1,
+        statement: "  Enunț principal  ",
+        items: <String>["  a) primul  ", "", "b) al doilea"],
+      );
+      expect(
+        p.toSimilarityQueryText(),
+        "Enunț principal\na) primul\nb) al doilea",
+      );
+    });
+
+    test("toSimilarityQueryText empty when no content", () {
+      final SimulationExamProblem p = SimulationExamProblem(
+        rowId: 1,
+        examProblemId: 1,
+        subjectNumber: 1,
+        problemNumber: 1,
+        orderIndex: 0,
+        statement: "   ",
+        items: <String>["", "  "],
+      );
+      expect(p.toSimilarityQueryText(), "");
+    });
+
     test("hasMarkingGuide respects rows and markdown", () {
       final SimulationExamProblem empty = SimulationExamProblem(
         rowId: 1,

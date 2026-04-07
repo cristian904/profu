@@ -41,6 +41,13 @@ SimulationExamProblem simulationExamProblemFromJoinRow(Map<String, dynamic> row)
     );
   }
 
+  final dynamic scoreRaw = row["student_score"];
+  final double? savedStudentScore = scoreRaw == null
+      ? null
+      : (scoreRaw is num
+          ? scoreRaw.toDouble()
+          : double.tryParse(scoreRaw.toString()));
+
   return SimulationExamProblem(
     rowId: (row["id"] as num).toInt(),
     examProblemId: (row["exam_problem_id"] as num).toInt(),
@@ -52,6 +59,7 @@ SimulationExamProblem simulationExamProblemFromJoinRow(Map<String, dynamic> row)
     items: items,
     markingStepRows: marking.tableRows,
     markingMarkdownFallback: marking.markdown,
+    savedStudentScore: savedStudentScore,
   );
 }
 

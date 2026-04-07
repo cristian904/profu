@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     # Optional: PostgreSQL async URL for future use
     database_url: str = ""
 
-    # Optional: Supabase for /solve-problem/suggest-problem (vector search) and quota
+    # Optional: Supabase for /rag/suggest-problem (vector search) and quota
     supabase_url: str = ""
     supabase_anon_key: str = ""
     supabase_service_role_key: str = ""

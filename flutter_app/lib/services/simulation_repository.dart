@@ -3,8 +3,10 @@ import "package:supabase_flutter/supabase_flutter.dart";
 
 import "../data/parsing/simulation_join_rows_mapper.dart";
 import "../models/simulation_exam_problem.dart";
+import "../models/simulation_history_entry.dart";
 
 export "../models/simulation_exam_problem.dart";
+export "../models/simulation_history_entry.dart";
 
 /// Loads simulation data from Supabase for the Simulari feature.
 class SimulationRepository {
@@ -43,7 +45,7 @@ class SimulationRepository {
       final dynamic response = await _client
           .from("exam_simulation_problems")
           .select(
-            "id, exam_problem_id, subject_number, problem_number, order_index, "
+            "id, exam_problem_id, subject_number, problem_number, order_index, student_score, "
             "exam_problems(statement, topic, choices, items, solution, "
             "scoring_scales(solution, order_index))",
           )
@@ -63,6 +65,54 @@ class SimulationRepository {
     } catch (e, st) {
       if (kDebugMode) {
         debugPrint("[SimulationRepository] fetchSimulationProblemsForCurrentUser error: $e\n$st");
+      }
+      rethrow;
+    }
+  }
+
+  /// Loads finished simulations with scores for the signed-in user (oldest first).
+  ///
+  /// Rows must have both [finished_at] and [student_score] set (submitted scoring).
+  Future<List<SimulationHistoryEntry>> fetchScoredSimulationHistoryForCurrentUser() async {
+    final String? userId = _client.auth.currentUser?.id;
+    if (userId == null || userId.isEmpty) {
+      throw Exception("Trebuie sa fii autentificat.");
+    }
+
+    try {
+      if (kDebugMode) {
+        debugPrint("[SimulationRepository] fetchScoredSimulationHistoryForCurrentUser start");
+      }
+
+      final dynamic response = await _client
+          .from("exam_simulations")
+          .select("id, student_score, finished_at, school_subject")
+          .eq("auth_user_id", userId)
+          .not("finished_at", "is", null)
+          .not("student_score", "is", null)
+          .order("finished_at", ascending: true);
+
+      final List<dynamic> rows = response as List<dynamic>;
+      final List<SimulationHistoryEntry> out = <SimulationHistoryEntry>[];
+      for (final dynamic raw in rows) {
+        final Map<String, dynamic> row = Map<String, dynamic>.from(raw as Map);
+        final SimulationHistoryEntry? e = SimulationHistoryEntry.fromSupabaseRow(row);
+        if (e != null) {
+          out.add(e);
+        }
+      }
+
+      if (kDebugMode) {
+        debugPrint(
+          "[SimulationRepository] fetchScoredSimulationHistoryForCurrentUser loaded count=${out.length}",
+        );
+      }
+      return out;
+    } catch (e, st) {
+      if (kDebugMode) {
+        debugPrint(
+          "[SimulationRepository] fetchScoredSimulationHistoryForCurrentUser error: $e\n$st",
+        );
       }
       rethrow;
     }

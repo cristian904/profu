@@ -40,22 +40,3 @@ class ProblemSolveRequest(BaseModel):
     # Langfuse tracing (optional; generated server-side when absent)
     trace_id: Optional[str] = Field(default=None, description="32-char lowercase hex Langfuse trace id")
     session_id: Optional[str] = Field(default=None, description="Logical session id for grouping traces")
-
-
-class SuggestProblemRequest(BaseModel):
-    """Request model for similar problem suggestions."""
-
-    problem_text: str
-
-
-class SuggestedProblemItem(BaseModel):
-    """One suggested problem (statement only for FE buttons)."""
-
-    statement: str
-
-
-class SuggestProblemResponse(BaseModel):
-    """Response for /suggest-problem: message + list of problems for FE buttons."""
-
-    message: str
-    problems: list[SuggestedProblemItem]

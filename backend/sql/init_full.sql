@@ -147,6 +147,34 @@ CREATE TABLE IF NOT EXISTS documents (
   embedding vector(1024)
 );
 
+-- Vector similarity RPC for RAG (PostgREST: /rest/v1/rpc/match_documents)
+CREATE OR REPLACE FUNCTION public.match_documents(
+  query_embedding vector(1024),
+  match_count integer DEFAULT 5
+)
+RETURNS TABLE (
+  id uuid,
+  content text,
+  metadata jsonb
+)
+LANGUAGE sql
+STABLE
+PARALLEL SAFE
+AS $$
+  SELECT
+    d.id,
+    d.content,
+    d.metadata
+  FROM public.documents AS d
+  WHERE d.embedding IS NOT NULL
+  ORDER BY d.embedding <=> query_embedding
+  LIMIT LEAST(match_count, 100);
+$$;
+
+GRANT EXECUTE ON FUNCTION public.match_documents(vector, integer) TO anon;
+GRANT EXECUTE ON FUNCTION public.match_documents(vector, integer) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.match_documents(vector, integer) TO service_role;
+
 -- =============================================================================
 -- 2. Supabase Auth + profiles + conversations by auth.users (UUID) + RLS
 -- =============================================================================

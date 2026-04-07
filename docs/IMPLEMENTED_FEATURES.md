@@ -1,6 +1,6 @@
 # Profu - Implemented Features
 
-**Last Updated:** January 28, 2026
+**Last Updated:** April 6, 2026
 
 This document provides a business-level overview of all features currently implemented in Profu. It serves as a living record of the application's capabilities and should be updated whenever new features are added or existing functionality changes significantly.
 
@@ -136,6 +136,29 @@ An AI-assisted flow for students who have a concrete exam problem (usually on pa
   - Students can start with a hint, attempt the problem, and come back for more detailed help.
 - Builds a **history of solved problems** for reflection, revision, and teacher review.
 
+#### Similar problems (RAG)
+- After the first assistant message (from OCR), students can ask for **problems similar** to the one on the photo; the app calls a dedicated backend endpoint and shows numbered suggestions.
+- Choosing a suggestion continues the **same** solve flow (full solution vs hint, follow-up chat).
+- **Open in Rezolvare from Simulari:** After a simulation, students can open similar problems in a new `problem_solving` conversation whose first turn is that suggestion list (see Simulari below).
+
+---
+
+### 3. Simulari (Bac-style exam simulation)
+
+**Status:** ✅ Implemented (MVP)  
+**Implementation Date:** April 2026 (ongoing refinements)
+
+A practice exam experience aligned with the Romanian Bac structure: timed session, problem statements with LaTeX, self-grading against a marking guide, and history of past attempts.
+
+#### What it does
+- **Simulare tab:** Generate a random Bac-style paper (subject slots filled from `exam_problems`), **3-hour** session timer, optional **finish** action, then per-problem score entry and submit to the backend for persisted totals.
+- **Istoric tab:** Chart and list of **submitted** simulations; open a past run to review statements, barem, and saved scores (read-only).
+- **Probleme similare (per problem):** On each problem card, after the live exam is **finished** or when viewing a simulation from **Istoric**, an action opens **vector-based similar problems** (same engine as Rezolvare). A bottom sheet shows the suggestions with **proper LaTeX rendering**; the student can **open in “Vreau să rezolv o problemă”** so the first assistant message lists the five suggestions and the usual solve flow applies.
+
+#### Business value
+- Connects **full-paper practice** with **targeted extra practice** on related items.
+- Reuses one RAG pipeline for both Rezolvare and Simulari, consistent monthly quota behaviour.
+
 ---
 
 ## 💾 Supabase Integration & Conversation History
@@ -161,9 +184,12 @@ An AI-assisted flow for students who have a concrete exam problem (usually on pa
     - One row per message in a conversation.
     - `speaker` field distinguishes `user` vs `assistant` messages.
     - Stores the full message content and timestamp.
-  - Additional tables prepared for future exam simulation flows:
+  - **Exam simulation and content:**
     - `exam_problems`, `exam_simulations`, `exam_simulation_problems`,
       `exam_grades`, `scoring_scales`.
+  - **Vector search (RAG) for similar problems:**
+    - `documents` stores embedded problem statements (`vector(1024)`), indexed by the ingestion pipeline.
+    - SQL function `public.match_documents(query_embedding, match_count)` must exist in the project (see `backend/sql/match_documents_rpc.sql`) for PostgREST RPC used by the AI backend.
 
 - **Row Level Security (RLS):**
   - Conversations and messages are protected so a user can only see/update
@@ -207,6 +233,14 @@ An AI-assisted flow for students who have a concrete exam problem (usually on pa
 
 ## 🔄 Recent Changes
 
+### April 2026 - Simulari, RAG router, and similar problems
+**What changed:**
+- **Simulari** in the Flutter app: Istoric + Simulare tabs, generation, timer, self-scoring, submission, and review of past simulations.
+- **Similar problems:** Shared **RAG** feature in the AI backend under **`POST /rag/suggest-problem`** (embed query, `match_documents` in Supabase); used from Rezolvare and from each Simulari problem card (with LaTeX in the result sheet).
+- **Deep link to Rezolvare:** From Simulari, opening similar problems can start a new `problem_solving` conversation with the suggestion list as the first assistant turn.
+
+**Business impact:** Students can move from mock exam items to focused practice without leaving the product narrative (simulation → related drills → solve chat).
+
 ### January 26, 2026 - Step-by-Step Learning Enhancements (Quick Wins)
 **What Changed:**
 - **Progress Tracking:** Students now see their progress through prerequisites (e.g., "Concept 2/3")
@@ -243,9 +277,10 @@ An AI-assisted flow for students who have a concrete exam problem (usually on pa
 | Feature | Status | Priority | Notes |
 |---------|--------|----------|-------|
 | N-am înțeles la clasă | ✅ Complete | P1 | Both modes fully functional |
-| Progressive Hints | 🔄 Planned | P1 | Scan problems, get step-by-step hints |
-| Similar Problems Finder | 📋 Backlog | P2 | Find practice problems |
-| Exam Simulator | 📋 Backlog | P2 | Basic practice exams |
+| Vreau să rezolv o problemă | ✅ Complete | P1 | OCR, chat, similar problems (RAG) |
+| Simulari (exam simulation) | ✅ Complete (MVP) | P1 | Timer, scoring, Istoric, similar problems per item |
+| Similar problems (RAG) | ✅ Complete | P1 | `/rag/suggest-problem`; Simulari + Rezolvare |
+| Progressive Hints | 🔄 Planned | P1 | Broader hint ladder (may overlap solve flow) |
 
 **Legend:**
 - ✅ Complete - Feature is live and tested
@@ -271,13 +306,9 @@ An AI-assisted flow for students who have a concrete exam problem (usually on pa
 
 ## 💡 How Features Work Together
 
-Currently, the "N-am înțeles la clasă" feature operates as a standalone tutoring system. As additional features are implemented, they will complement each other:
-
-**Future Integration Example:**
-1. Student scans a problem (Progressive Hints feature)
-2. Gets stuck on a specific concept
-3. Switches to "N-am înțeles la clasă" to understand that concept
-4. Returns to problem with better understanding
+- **Clarify** and **Rezolvare** are separate chat surfaces with shared patterns (streaming, LaTeX, Supabase history).
+- **Simulari** adds full-paper practice; **similar problems** on each item reuse the same RAG endpoint as Rezolvare and can **hand off** into a new Rezolvare conversation.
+- **Example study path:** Run a Simulari session → review marks → open similar problems for a weak item → work through one suggestion with hints or full solution in Rezolvare → return to Clarify for a concept gap if needed.
 
 ---
 
@@ -316,15 +347,15 @@ For questions about feature implementation or to report issues:
 ## 🔮 Next Steps
 
 **Immediate Priorities:**
-1. Complete Progressive Hints system (P1 feature)
-2. Gather user feedback on Clarify modes
-3. Monitor performance metrics and optimize as needed
+1. Gather user feedback on Simulari and similar-problems handoff to Rezolvare
+2. Progressive Hints / deeper step scaffolding where it adds value beyond current solve flow
+3. Monitor RAG quality (index coverage, embedding refresh) and quota usage
 
 **Future Enhancements:**
 1. Expand to other subjects beyond math
-2. Add Romanian language support throughout (currently mixed RO/EN)
-3. Implement user progress tracking
-4. Add personalized learning recommendations
+2. Consistent Romanian UI copy across the app (product-facing strings)
+3. User progress analytics across Simulari + conversations
+4. Personalized learning recommendations
 
 ---
 

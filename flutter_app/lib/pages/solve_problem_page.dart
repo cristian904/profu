@@ -22,9 +22,32 @@ import '../widgets/centered_chat_panel.dart';
 import '../widgets/collapsible_conversation_sidebar.dart';
 import '../widgets/profu_drawer.dart';
 import '../widgets/profu_scene_background.dart';
+import '../services/suggest_similar_problems_api.dart';
+
+/// Seed for opening Rezolvare with the first assistant turn listing similar problems (e.g. from Simulari).
+class SimilarProblemsSeed {
+  /// Creates seed data for [SolveProblemPage].
+  const SimilarProblemsSeed({
+    required this.message,
+    required this.statements,
+    required this.conversationTitle,
+  });
+
+  /// Full assistant message (Romanian) from RAG.
+  final String message;
+
+  /// Statement strings for "Problema 1" … chips.
+  final List<String> statements;
+
+  /// Short title for the new conversation row in history.
+  final String conversationTitle;
+}
 
 class SolveProblemPage extends StatefulWidget {
-  const SolveProblemPage({super.key});
+  const SolveProblemPage({super.key, this.similarProblemsSeed});
+
+  /// When set, the page preloads one assistant message with suggested problems (no image upload).
+  final SimilarProblemsSeed? similarProblemsSeed;
 
   @override
   State<SolveProblemPage> createState() => _SolveProblemPageState();
@@ -39,6 +62,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
   bool _isStreaming = false;
   bool _isLoadingHistory = false;
   bool _isLoadingSimilarProblems = false;
+  bool _isBootstrappingSimilarSeed = false;
   String? _problemText;
   File? _selectedImage; // For mobile
   Uint8List? _selectedImageBytes; // For web
@@ -50,6 +74,58 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
 
   String get _apiUrl => '${AppConfig.apiBaseUrl}/solve-problem';
   String get _uploadUrl => '${AppConfig.apiBaseUrl}/solve-problem/upload';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.similarProblemsSeed != null) {
+      _isBootstrappingSimilarSeed = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _bootstrapSimilarProblemsSeed(widget.similarProblemsSeed!);
+      });
+    }
+  }
+
+  /// Creates conversation + first assistant bubble from Simulari (or deep-link) seed.
+  Future<void> _bootstrapSimilarProblemsSeed(SimilarProblemsSeed seed) async {
+    try {
+      await _ensureConversationCreated(seed.conversationTitle);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _messages.add(ChatMessage(
+          text: seed.message,
+          isUser: false,
+          timestamp: DateTime.now(),
+          isStreaming: false,
+          suggestedProblems: seed.statements.isNotEmpty ? seed.statements : null,
+        ));
+      });
+      if (_conversationId != null && seed.message.trim().isNotEmpty) {
+        _conversationRepository
+            .createMessage(
+              conversationId: _conversationId!,
+              speaker: ConversationSpeaker.assistant,
+              content: seed.message,
+            )
+            .then((_) {}, onError: (_) {});
+      }
+      _scrollToBottom();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Nu am putut pregăti conversația: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBootstrappingSimilarSeed = false;
+        });
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -630,48 +706,30 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
     });
 
     try {
-      final request = http.Request(
-        'POST',
-        Uri.parse('$_apiUrl/suggest-problem'),
-      );
-      request.headers['Content-Type'] = 'application/json';
-      final accessTokenSuggest =
-          Supabase.instance.client.auth.currentSession?.accessToken;
-      if (accessTokenSuggest != null) {
-        request.headers['Authorization'] = 'Bearer $accessTokenSuggest';
-      }
-      request.body = json.encode({'problem_text': _problemText});
-
-      final response = await request.send();
-      final body = await response.stream.transform(utf8.decoder).join();
+      final SuggestSimilarProblemsResult? result =
+          await SuggestSimilarProblemsApi.suggest(problemText: _problemText!);
 
       if (!mounted) return;
 
-      if (response.statusCode == 200) {
-        final data = json.decode(body) as Map<String, dynamic>;
-        final message = data['message'] as String? ?? 'Nu am găsit probleme similare.';
-        final problemsList = data['problems'] as List<dynamic>? ?? [];
-        final statements = problemsList
-            .map((e) => (e as Map<String, dynamic>)['statement'] as String? ?? '')
-            .toList();
-
+      if (result != null) {
         setState(() {
           _isLoadingSimilarProblems = false;
           _messages.add(ChatMessage(
-            text: message,
+            text: result.message,
             isUser: false,
             timestamp: DateTime.now(),
             isStreaming: false,
-            suggestedProblems: statements.isNotEmpty ? statements : null,
+            suggestedProblems:
+                result.statements.isNotEmpty ? result.statements : null,
           ));
         });
 
-        if (_conversationId != null && message.trim().isNotEmpty) {
+        if (_conversationId != null && result.message.trim().isNotEmpty) {
           _conversationRepository
               .createMessage(
                 conversationId: _conversationId!,
                 speaker: ConversationSpeaker.assistant,
-                content: message,
+                content: result.message,
               )
               .then((_) {}, onError: (_) {});
         }
@@ -681,7 +739,7 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
           _isLoadingSimilarProblems = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Eroare la sugestii: ${response.statusCode}')),
+          const SnackBar(content: Text('Eroare la sugestii. Încearcă din nou.')),
         );
       }
     } catch (e) {
@@ -1005,25 +1063,19 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                       const LinearProgressIndicator(minHeight: 2),
                     // Chat messages
                     Expanded(
-                      child: _messages.isEmpty &&
-                              _selectedImage == null &&
-                              _selectedImageBytes == null
+                      child: _isBootstrappingSimilarSeed
                           ? Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Icon(
-                                    Icons.image_outlined,
-                                    size: 72,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .primary
-                                        .withValues(alpha: 0.5),
-                                  ),
+                                  const CircularProgressIndicator(),
                                   const SizedBox(height: 16),
                                   Text(
-                                    'Încarcă o poză cu problema pe care vrei să o rezolvi!',
-                                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    'Se încarcă sugestiile…',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
                                           fontSize: ChatTypography.body,
                                           color: Theme.of(context)
                                               .colorScheme
@@ -1031,22 +1083,54 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                                         ),
                                     textAlign: TextAlign.center,
                                   ),
-                              const SizedBox(height: 24),
-                              ElevatedButton.icon(
-                                onPressed: _pickImage,
-                                icon: const Icon(Icons.upload_file),
-                                label: const Text('Încarcă imagine'),
-                                style: ElevatedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                    vertical: 12,
-                                  ),
-                                ),
+                                ],
                               ),
-                            ],
-                          ),
-                        )
-                      : ListView.builder(
+                            )
+                          : _messages.isEmpty &&
+                                  _selectedImage == null &&
+                                  _selectedImageBytes == null
+                              ? Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.image_outlined,
+                                        size: 72,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .primary
+                                            .withValues(alpha: 0.5),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      Text(
+                                        'Încarcă o poză cu problema pe care vrei să o rezolvi!',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .bodyMedium
+                                            ?.copyWith(
+                                              fontSize: ChatTypography.body,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurfaceVariant,
+                                            ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                      const SizedBox(height: 24),
+                                      ElevatedButton.icon(
+                                        onPressed: _pickImage,
+                                        icon: const Icon(Icons.upload_file),
+                                        label: const Text('Încarcă imagine'),
+                                        style: ElevatedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 24,
+                                            vertical: 12,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              : ListView.builder(
                           controller: _scrollController,
                           padding: const EdgeInsets.all(16),
                           itemCount: _messages.length +
@@ -1152,8 +1236,10 @@ class _SolveProblemPageState extends State<SolveProblemPage> {
                             decoration: chatComposerInputDecoration(
                               context,
                               hintText: _problemText == null
-                                  ? 'Încarcă mai întâi o imagine...'
-                                  : 'Scrie mesajul tău...',
+                                  ? (_messages.isNotEmpty
+                                      ? 'Alege o problemă de mai sus, apoi poți scrie…'
+                                      : 'Încarcă mai întâi o imagine…')
+                                  : 'Scrie mesajul tău…',
                             ),
                             maxLines: null,
                             textInputAction: TextInputAction.send,

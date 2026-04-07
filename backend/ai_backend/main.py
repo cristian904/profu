@@ -10,7 +10,7 @@ import uuid
 from ai_backend.config import settings  # noqa: F401 - load .env via pydantic-settings
 from profu_logging.log_utils import ColoredJsonFormatter
 from profu_logging.feature_logger import get_feature_logger
-from ai_backend.routers import clarify_once, clarify_with_steps, solve_problem, simulari
+from ai_backend.routers import clarify_once, clarify_with_steps, rag, solve_problem, simulari
 from ai_backend.common.auth import ensure_jwks_prefetch, get_user_id_from_request
 from ai_backend.common.prompts import PROMPTS
 from ai_backend.langfuse.client import create_langfuse_client
@@ -117,6 +117,7 @@ app.add_middleware(
 app.include_router(clarify_once.router)
 app.include_router(clarify_with_steps.router)
 app.include_router(solve_problem.router)
+app.include_router(rag.router)
 app.include_router(simulari.router)
 
 @app.get("/")

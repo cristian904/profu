@@ -24,14 +24,8 @@ from ai_backend.common.streaming.sse import (
     sse_data_line,
 )
 from ai_backend.services.solve_problem.ocr import perform_ocr
-from ai_backend.services.solve_problem.embeddings import embed_query, normalize_embedding
 from ai_backend.services.solve_problem.graph import ProblemSolvingState, build_problem_solving_graph
-from ai_backend.services.solve_problem.models import (
-    ProblemSolveRequest,
-    SuggestProblemRequest,
-    SuggestedProblemItem,
-    SuggestProblemResponse,
-)
+from ai_backend.services.solve_problem.models import ProblemSolveRequest
 from .common import (
     LangGraphChatModel,
     get_current_user_id,
@@ -50,7 +44,6 @@ router = APIRouter(prefix="/solve-problem", tags=["solve_problem"])
 
 LOG_SOLVE_UPLOAD = get_feature_logger(source="solve_problem_upload")
 LOG_SOLVE_STREAM = get_feature_logger(source="solve_problem_stream")
-LOG_SOLVE_SUGGEST = get_feature_logger(source="solve_problem_suggest")
 
 
 @router.post("/upload")
@@ -178,108 +171,6 @@ async def upload_problem_image(
             status_code=500,
             detail="Error processing image. Check server logs for details.",
         ) from e
-
-
-def _normalize_embedding(values: list[float]) -> list[float]:
-    """
-    Backwards-compatible wrapper for embedding normalization.
-
-    Kept to avoid changing internal call sites; implementation lives in services.solve_problem.
-    """
-    return normalize_embedding(values)
-
-
-def _embed_query(text: str) -> list[float]:
-    """
-    Backwards-compatible wrapper for query embeddings.
-
-    Kept to avoid changing internal call sites; implementation lives in services.solve_problem.
-    """
-    return embed_query(text)
-
-
-@router.post("/suggest-problem", response_model=SuggestProblemResponse)
-async def suggest_problem(
-    body: SuggestProblemRequest,
-    user_id: UUID = Depends(get_current_user_id),
-    supabase=Depends(get_supabase_client),
-):
-    """
-    Vector search in documents table; return top 5 similar problem statements.
-    Used when the user taps "vreau probleme similare" after the first AI response.
-    Requires Authorization: Bearer <Supabase JWT>. Enforces monthly solve quota when enabled.
-    """
-    problem_text = (body.problem_text or "").strip()
-    if not problem_text:
-        raise HTTPException(status_code=400, detail="problem_text is required and cannot be empty")
-
-    threshold = getattr(settings, "solve_monthly_quota_threshold", 0) or 0
-    if is_solve_quota_exceeded(user_id, supabase, threshold):
-        LOG_SOLVE_SUGGEST.info(
-            f"Quota exceeded for suggest-problem: user={user_id} threshold={threshold}",
-            user_id=user_id,
-        )
-        raise HTTPException(status_code=403, detail=QUOTA_LIMIT_MESSAGE)
-
-    if supabase is None:
-        raise HTTPException(
-            status_code=500,
-            detail="SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_ANON_KEY) must be set",
-        )
-
-    try:
-        query_embedding = _embed_query(problem_text)
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback as tb
-        log_json(
-            source="solve_problem_suggest",
-            level="error",
-            message=f"Embedding failed: {e!s}",
-            user_id=user_id,
-            traceback=tb.format_exc(),
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="Embedding failed. Check server logs for details.",
-        ) from e
-
-    try:
-        r = supabase.rpc("match_documents", {"query_embedding": query_embedding, "match_count": 5}).execute()
-        rows = (r.data or []) if hasattr(r, "data") else []
-    except Exception as e:
-        import traceback as tb
-        log_json(
-            source="solve_problem_suggest",
-            level="error",
-            message=f"match_documents RPC failed: {e!s}",
-            user_id=user_id,
-            traceback=tb.format_exc(),
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="Vector search failed. Check server logs for details.",
-        ) from e
-
-    doc_ids = [row.get("id") for row in rows]
-    log_json(
-        source="solve_problem_suggest",
-        level="info",
-        message=f"Document ids shown to user (check in DB): {doc_ids}",
-        user_id=user_id,
-        traceback=None,
-    )
-
-    problems = [SuggestedProblemItem(statement=(row.get("content") or "")) for row in rows]
-    # Build message with full problem text for each
-    if not problems:
-        message = "Nu am găsit probleme similare în baza de date."
-    else:
-        parts = [f"{i + 1}. {p.statement}" for i, p in enumerate(problems)]
-        message = "Uite " + str(len(problems)) + " probleme asemanatoare cu acesta:\n\n" + "\n\n".join(parts)
-
-    return SuggestProblemResponse(message=message, problems=problems)
 
 
 @router.post("/stream")

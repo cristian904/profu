@@ -14,6 +14,7 @@ class SimulationExamProblem {
     List<String>? items,
     List<ExamSolutionStepRow>? markingStepRows,
     this.markingMarkdownFallback,
+    this.savedStudentScore,
   })  : items = List<String>.unmodifiable(items ?? <String>[]),
         markingStepRows = List<ExamSolutionStepRow>.unmodifiable(
           markingStepRows ?? <ExamSolutionStepRow>[],
@@ -39,6 +40,9 @@ class SimulationExamProblem {
   /// Non-tabular barem / prose when [markingStepRows] is empty.
   final String? markingMarkdownFallback;
 
+  /// Per-problem score from DB after submit; null if not set yet.
+  final double? savedStudentScore;
+
   /// True if any marking content is available for post-exam display.
   bool get hasMarkingGuide {
     if (markingStepRows.isNotEmpty) {
@@ -57,6 +61,24 @@ class SimulationExamProblem {
       return 15;
     }
     return 0;
+  }
+
+  /// Full text used for vector similarity (statement + sub-items), trimmed.
+  ///
+  /// Returns an empty string when there is no usable content.
+  String toSimilarityQueryText() {
+    final StringBuffer buf = StringBuffer();
+    final String s = statement.trim();
+    if (s.isNotEmpty) {
+      buf.writeln(s);
+    }
+    for (int i = 0; i < items.length; i++) {
+      final String line = items[i].trim();
+      if (line.isNotEmpty) {
+        buf.writeln(line);
+      }
+    }
+    return buf.toString().trim();
   }
 
   /// Romanian section title for the exam structure.

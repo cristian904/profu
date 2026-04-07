@@ -1,5 +1,5 @@
 """
-Unit tests for solve_problem embeddings helpers.
+Unit tests for RAG embeddings helpers.
 """
 
 from unittest.mock import MagicMock, patch
@@ -8,7 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 from ai_backend.config import settings
-from ai_backend.services.solve_problem.embeddings import embed_query, normalize_embedding
+from ai_backend.services.rag.embeddings import embed_query, normalize_embedding
 
 
 class TestNormalizeEmbedding:
