@@ -1,7 +1,6 @@
-"""Step 5 — Load fixed merged JSONs into Supabase ``exam_problems`` table."""
+"""Load merged structured markdown into Supabase ``exam_problems`` table."""
 from __future__ import annotations
 
-import json
 import os
 import re
 import traceback
@@ -10,6 +9,10 @@ from typing import Any
 from profu_logging.feature_logger import FeatureLogger
 
 from exam_parser.pipeline.config import Checkpoint, PipelineConfig, RunDirs
+from exam_parser.parsers.structured_markdown import (
+    merged_document_to_rows_dict,
+    parse_merged_markdown,
+)
 
 STEP_NAME = "load_to_db"
 
@@ -49,7 +52,7 @@ def _json_to_rows(data: dict, *, year: int | None, source: str) -> list[dict]:
             else:
                 solution = problem.get("item_solutions")
             if solution is None:
-                solution = []
+                solution = "" if key == "s1" else []
             rows.append({
                 "subject_number": subject_number,
                 "problem_number": num,
@@ -82,16 +85,16 @@ async def run(
     checkpoint: Checkpoint,
     logger: FeatureLogger,
 ) -> None:
-    """Load all fixed merged JSONs into the exam_problems table."""
-    fixed_files = sorted(dirs.fixed.glob("*.json"))
-    if not fixed_files:
-        logger.warning(f"[{STEP_NAME}] No fixed JSONs found in {dirs.fixed}")
+    """Load all merged markdown files from ``03_merged`` into the exam_problems table."""
+    merged_files = sorted(dirs.merged.glob("*_merged.md"))
+    if not merged_files:
+        logger.warning(f"[{STEP_NAME}] No merged markdown files found in {dirs.merged}")
         return
 
-    pending = [f for f in fixed_files if not checkpoint.is_file_done(STEP_NAME, f.name)]
+    pending = [f for f in merged_files if not checkpoint.is_file_done(STEP_NAME, f.name)]
     logger.info(
-        f"[{STEP_NAME}] {len(fixed_files)} fixed JSONs, "
-        f"{len(fixed_files) - len(pending)} already loaded, "
+        f"[{STEP_NAME}] {len(merged_files)} merged JSONs, "
+        f"{len(merged_files) - len(pending)} already loaded, "
         f"{len(pending)} to process"
     )
 
@@ -101,7 +104,8 @@ async def run(
     if config.dry_run:
         total_rows = 0
         for f in pending:
-            data = json.loads(f.read_text(encoding="utf-8"))
+            doc = parse_merged_markdown(f.read_text(encoding="utf-8"))
+            data = merged_document_to_rows_dict(doc)
             rows = _json_to_rows(data, year=_parse_year(f.stem), source=config.source)
             total_rows += len(rows)
             logger.info(f"[DRY RUN] {f.name} → {len(rows)} rows")
@@ -113,7 +117,8 @@ async def run(
 
     for f in pending:
         try:
-            data = json.loads(f.read_text(encoding="utf-8"))
+            doc = parse_merged_markdown(f.read_text(encoding="utf-8"))
+            data = merged_document_to_rows_dict(doc)
             year = _parse_year(f.stem)
             rows = _json_to_rows(data, year=year, source=config.source)
             if rows:

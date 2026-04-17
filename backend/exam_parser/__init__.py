@@ -1,2 +1,2 @@
-"""Parse bacalaureat exam PDFs with Gemini 2.0 Vision."""
+"""Bacalaureat exam parsing package (pipeline: Nougat on HF Jobs + Ollama + merge/DB)."""
 __version__ = "1.0.0"

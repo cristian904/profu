@@ -12,10 +12,11 @@ _RUNS_DIR = _SCRIPT_DIR / "runs"
 
 # Ordered list of pipeline step names
 STEP_NAMES: list[str] = [
+    "extract_problems",
     "parse_problems",
+    "extract_solutions",
     "parse_solutions",
     "merge",
-    "fix_latex",
     "load_to_db",
     "index_to_vector_db",
 ]
@@ -32,11 +33,8 @@ class PipelineConfig:
     start_from: str | None = None
     dry_run: bool = False
     overwrite: bool = False
-    # When set, override ``settings`` for this run only (see runner).
-    model_vision: str | None = None
-    model_structured: str | None = None
-    model_fix_identify: str | None = None
-    model_fix_repair: str | None = None
+    # When set, override ``settings.ollama_model`` for this run only (see runner).
+    ollama_model: str | None = None
 
 
 @dataclass
@@ -49,7 +47,6 @@ class RunDirs:
     solutions_vision: Path
     solutions_structured: Path
     merged: Path
-    fixed: Path
 
     @classmethod
     def from_config(cls, config: PipelineConfig) -> RunDirs:
@@ -61,7 +58,6 @@ class RunDirs:
             solutions_vision=root / "02_solutions_parsed" / "vision",
             solutions_structured=root / "02_solutions_parsed" / "structured",
             merged=root / "03_merged",
-            fixed=root / "04_fixed",
         )
 
     def create_all(self) -> None:
@@ -72,7 +68,6 @@ class RunDirs:
             self.solutions_vision,
             self.solutions_structured,
             self.merged,
-            self.fixed,
         ):
             d.mkdir(parents=True, exist_ok=True)
 

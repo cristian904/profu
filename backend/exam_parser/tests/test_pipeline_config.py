@@ -12,8 +12,11 @@ from exam_parser.pipeline.config import Checkpoint, PipelineConfig, RunDirs, STE
 
 def test_step_names_order() -> None:
     """Pipeline step list should stay stable for CLI and checkpoints."""
-    assert STEP_NAMES[0] == "parse_problems"
+    assert STEP_NAMES[0] == "extract_problems"
+    assert STEP_NAMES[1] == "parse_problems"
+    assert "merge" in STEP_NAMES
     assert "index_to_vector_db" in STEP_NAMES
+    assert "fix_latex" not in STEP_NAMES
 
 
 def test_run_dirs_from_config_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -30,7 +33,7 @@ def test_run_dirs_from_config_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     dirs = RunDirs.from_config(cfg)
     assert dirs.root == tmp_path / "runs" / "unit_test_run"
     assert dirs.merged == dirs.root / "03_merged"
-    assert dirs.fixed == dirs.root / "04_fixed"
+    assert dirs.problems_vision == dirs.root / "01_problems_parsed" / "vision"
 
 
 def test_run_dirs_create_all(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -40,30 +43,30 @@ def test_run_dirs_create_all(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     dirs = RunDirs.from_config(cfg)
     dirs.create_all()
     assert dirs.problems_vision.is_dir()
-    assert dirs.fixed.is_dir()
+    assert dirs.merged.is_dir()
 
 
 def test_checkpoint_new_file_roundtrip(tmp_path: Path) -> None:
     """Checkpoint should persist completed files and step status."""
     path = tmp_path / "cp.json"
     cp = Checkpoint(path, run_name="r1")
-    assert cp.is_file_done("parse_problems", "a.pdf") is False
-    cp.mark_file_done("parse_problems", "a.pdf")
-    assert cp.is_file_done("parse_problems", "a.pdf") is True
-    cp.mark_step_done("parse_problems")
-    assert cp.is_step_done("parse_problems") is True
+    assert cp.is_file_done("extract_problems", "a.pdf") is False
+    cp.mark_file_done("extract_problems", "a.pdf")
+    assert cp.is_file_done("extract_problems", "a.pdf") is True
+    cp.mark_step_done("extract_problems")
+    assert cp.is_step_done("extract_problems") is True
 
     cp2 = Checkpoint(path, run_name="r1")
-    assert cp2.is_file_done("parse_problems", "a.pdf") is True
+    assert cp2.is_file_done("extract_problems", "a.pdf") is True
 
 
 def test_checkpoint_reset_step(tmp_path: Path) -> None:
     """reset_step should drop the step entry."""
     path = tmp_path / "cp.json"
     cp = Checkpoint(path, run_name="r1")
-    cp.mark_file_done("merge", "x.json")
+    cp.mark_file_done("merge", "x.md")
     cp.reset_step("merge")
-    assert cp.is_file_done("merge", "x.json") is False
+    assert cp.is_file_done("merge", "x.md") is False
 
 
 def test_checkpoint_load_existing(tmp_path: Path) -> None:
@@ -72,9 +75,9 @@ def test_checkpoint_load_existing(tmp_path: Path) -> None:
     payload = {
         "run_name": "old",
         "steps": {
-            "merge": {"completed_files": ["1.json"], "status": "in_progress"},
+            "merge": {"completed_files": ["1.md"], "status": "in_progress"},
         },
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
     cp = Checkpoint(path, run_name="ignored_on_load")
-    assert cp.is_file_done("merge", "1.json") is True
+    assert cp.is_file_done("merge", "1.md") is True

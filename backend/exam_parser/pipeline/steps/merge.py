@@ -1,13 +1,18 @@
-"""Step 3 — Merge problem and solution structured JSONs by matching filenames."""
+"""Step 3 — Merge problem and solution structured markdown files by matching filenames."""
 from __future__ import annotations
 
-import json
 import traceback
 from typing import Any
 
 from profu_logging.feature_logger import FeatureLogger
 
 from exam_parser.pipeline.config import Checkpoint, PipelineConfig, RunDirs
+from exam_parser.parsers.structured_markdown import (
+    parse_problems_markdown,
+    parse_solutions_markdown,
+    serialize_merged_document,
+)
+from exam_parser.parsers.structured_models import MergedDocument
 
 STEP_NAME = "merge"
 
@@ -31,35 +36,21 @@ def _merge_s1(exam_list: list[dict], sol_list: list[dict]) -> list[dict]:
         entry = dict(ex)
         num = _norm_num(ex.get("number"))
         sol = sol_by_num.get(num)
-        entry["solution_steps"] = sol["solution_steps"] if sol else []
+        entry["solution_steps"] = (sol or {}).get("solution_steps") or ""
         out.append(entry)
     return out
 
 
 def _merge_s2_s3(exam_list: list[dict], sol_list: list[dict]) -> list[dict]:
-    sol_by_num_item: dict[tuple[str, str], dict] = {}
-    for s in sol_list:
-        num = _norm_num(s.get("number"))
-        item = (s.get("item") or "").strip().lower()
-        if num or item:
-            sol_by_num_item[(num, item)] = s
-
-    item_letters = ("a", "b", "c", "d")
+    sol_by_num = {_norm_num(s.get("number")): s for s in sol_list}
     out = []
     for ex in exam_list:
         entry = dict(ex)
         num = _norm_num(ex.get("number"))
-        items = ex.get("items")
-        if not isinstance(items, list):
-            items = []
-        item_solutions = []
-        for i, _ in enumerate(items):
-            letter = item_letters[i] if i < len(item_letters) else chr(ord("a") + i)
-            sol = sol_by_num_item.get((num, letter))
-            item_solutions.append({
-                "item": letter,
-                "solution_steps": sol["solution_steps"] if sol else [],
-            })
+        sol = sol_by_num.get(num) or {}
+        item_solutions = sol.get("item_solutions")
+        if not isinstance(item_solutions, list):
+            item_solutions = []
         entry["item_solutions"] = item_solutions
         out.append(entry)
     return out
@@ -91,19 +82,19 @@ async def run(
     checkpoint: Checkpoint,
     logger: FeatureLogger,
 ) -> None:
-    """Match problem JSONs with solution JSONs by filename, merge, and write output."""
-    problem_jsons = sorted(dirs.problems_structured.glob("*.json"))
-    if not problem_jsons:
-        logger.warning(f"[{STEP_NAME}] No problem JSONs found in {dirs.problems_structured}")
+    """Match problem markdown with solution markdown by filename, merge, write merged markdown."""
+    problem_mds = sorted(dirs.problems_structured.glob("*.md"))
+    if not problem_mds:
+        logger.warning(f"[{STEP_NAME}] No problem markdown files found in {dirs.problems_structured}")
         return
 
     # Build lookup of available solution files by stem
-    solution_stems = {p.stem: p for p in dirs.solutions_structured.glob("*.json")}
+    solution_stems = {p.stem: p for p in dirs.solutions_structured.glob("*.md")}
 
-    pending = [p for p in problem_jsons if not checkpoint.is_file_done(STEP_NAME, p.name)]
+    pending = [p for p in problem_mds if not checkpoint.is_file_done(STEP_NAME, p.name)]
     logger.info(
-        f"[{STEP_NAME}] {len(problem_jsons)} problem JSONs, "
-        f"{len(problem_jsons) - len(pending)} already merged, "
+        f"[{STEP_NAME}] {len(problem_mds)} problem markdown files, "
+        f"{len(problem_mds) - len(pending)} already merged, "
         f"{len(pending)} to process"
     )
 
@@ -127,13 +118,16 @@ async def run(
             continue
 
         try:
-            exam_data = json.loads(problem_path.read_text(encoding="utf-8"))
-            sol_data = json.loads(solution_path.read_text(encoding="utf-8"))
+            exam_data = parse_problems_markdown(
+                problem_path.read_text(encoding="utf-8")
+            ).to_exam_dict()
+            sol_data = parse_solutions_markdown(
+                solution_path.read_text(encoding="utf-8")
+            ).to_solution_dict()
             merged = merge_exam_with_solution(exam_data, sol_data)
-            out_path = dirs.merged / f"{stem}_merged.json"
-            out_path.write_text(
-                json.dumps(merged, indent=2, ensure_ascii=False), encoding="utf-8"
-            )
+            out_path = dirs.merged / f"{stem}_merged.md"
+            merged_doc = MergedDocument.from_merge_dict(merged)
+            out_path.write_text(serialize_merged_document(merged_doc), encoding="utf-8")
             checkpoint.mark_file_done(STEP_NAME, problem_path.name)
             merged_count += 1
         except Exception as exc:

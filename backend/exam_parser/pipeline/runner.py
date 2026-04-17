@@ -12,7 +12,8 @@ from exam_parser.pipeline.config import (
     RunDirs,
 )
 from exam_parser.pipeline.steps import (
-    fix_latex,
+    extract_problems,
+    extract_solutions,
     index_to_vector_db,
     load_to_db,
     merge,
@@ -22,10 +23,11 @@ from exam_parser.pipeline.steps import (
 
 # Ordered mapping: step_name → module (must have async ``run`` function)
 STEPS = [
+    ("extract_problems", extract_problems),
     ("parse_problems", parse_problems),
+    ("extract_solutions", extract_solutions),
     ("parse_solutions", parse_solutions),
     ("merge", merge),
-    ("fix_latex", fix_latex),
     ("load_to_db", load_to_db),
     ("index_to_vector_db", index_to_vector_db),
 ]
@@ -33,7 +35,7 @@ STEPS = [
 
 def _apply_model_overrides(config: PipelineConfig) -> dict[str, str]:
     """
-    Temporarily patch global pipeline ``settings`` with per-run Gemini model ids.
+    Temporarily patch global pipeline ``settings`` with per-run Ollama model id.
 
     Returns:
         Map of attribute name → previous value, for restoration in ``finally``.
@@ -41,16 +43,9 @@ def _apply_model_overrides(config: PipelineConfig) -> dict[str, str]:
     from exam_parser.pipeline.settings import settings
 
     backup: dict[str, str] = {}
-    pairs: list[tuple[str, str | None]] = [
-        ("model_vision", config.model_vision),
-        ("model_structured", config.model_structured),
-        ("model_fix_identify", config.model_fix_identify),
-        ("model_fix_repair", config.model_fix_repair),
-    ]
-    for attr, val in pairs:
-        if val is not None:
-            backup[attr] = getattr(settings, attr)
-            setattr(settings, attr, val)
+    if config.ollama_model is not None:
+        backup["ollama_model"] = settings.ollama_model
+        settings.ollama_model = config.ollama_model
     return backup
 
 
@@ -85,9 +80,10 @@ async def run_pipeline(config: PipelineConfig) -> None:
             f"dry_run={config.dry_run}, overwrite={config.overwrite}"
         )
         logger.info(
-            "LLM models for this run — "
-            f"vision={settings.model_vision}, structured={settings.model_structured}, "
-            f"fix_identify={settings.model_fix_identify}, fix_repair={settings.model_fix_repair}"
+            "Models / services for this run — "
+            f"nougat_model={settings.nougat_model_id}, nougat_device={settings.nougat_device}, "
+            f"ollama_model={settings.ollama_model}, ollama_base_url={settings.ollama_base_url}, "
+            f"embed_model={settings.model_embed}"
         )
 
         # Determine which steps to run
@@ -104,32 +100,14 @@ async def run_pipeline(config: PipelineConfig) -> None:
                 checkpoint.reset_step(name)
             logger.info(f"Resuming from step '{config.start_from}' (index {start_idx})")
 
-        import asyncio
-
-        pending_parallel = []
-
         for step_name, step_module in STEPS[start_idx:]:
             if checkpoint.is_step_done(step_name) and not config.overwrite:
                 logger.info(f"Skipping step '{step_name}' — already done")
                 continue
 
-            if step_name in ("parse_problems", "parse_solutions"):
-                pending_parallel.append((step_name, step_module.run(config, dirs, checkpoint, logger)))
-            else:
-                if pending_parallel:
-                    logger.info(f"=== Running parallel steps: {[n for n, _ in pending_parallel]} ===")
-                    await asyncio.gather(*[coro for _, coro in pending_parallel])
-                    logger.info("=== Finished parallel steps ===")
-                    pending_parallel = []
-
-                logger.info(f"=== Running step: {step_name} ===")
-                await step_module.run(config, dirs, checkpoint, logger)
-                logger.info(f"=== Finished step: {step_name} ===")
-
-        if pending_parallel:
-            logger.info(f"=== Running parallel steps: {[n for n, _ in pending_parallel]} ===")
-            await asyncio.gather(*[coro for _, coro in pending_parallel])
-            logger.info("=== Finished parallel steps ===")
+            logger.info(f"=== Running step: {step_name} ===")
+            await step_module.run(config, dirs, checkpoint, logger)
+            logger.info(f"=== Finished step: {step_name} ===")
 
         logger.info("Pipeline complete")
     finally:

@@ -5,22 +5,29 @@ Usage (from repo root):
         --run-name bac_2024 \\
         --problems-dir path/to/problems \\
         --solutions-dir path/to/solutions \\
-        [--source var] [--start-from fix_latex] [--dry-run] [--overwrite]
+        [--source var] [--start-from merge] [--dry-run] [--overwrite]
 """
 from __future__ import annotations
 
 import argparse
 import asyncio
+import logging
+import os
+import signal
+import sys
 from pathlib import Path
 
 from exam_parser.pipeline.config import STEP_NAMES, PipelineConfig
-from exam_parser.pipeline.model_options import api_ids_for_argparse
+from exam_parser.pipeline.model_options import ollama_ids_for_argparse
 from exam_parser.pipeline.runner import run_pipeline
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build and return the CLI argument parser for the ingestion pipeline."""
     p = argparse.ArgumentParser(
-        description="End-to-end exam ingestion pipeline: PDF → parse → merge → fix → DB → vector index.",
+        description=(
+            "End-to-end exam ingestion: PDF → Nougat → markdown → Ollama JSON → merge → DB → vector index."
+        ),
     )
     p.add_argument(
         "--run-name",
@@ -55,49 +62,53 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show what would be processed without making API calls or DB writes",
+        help="Show what would be processed without calling Ollama or writing to DB",
     )
     p.add_argument(
         "--overwrite",
         action="store_true",
         help="Re-process files even if checkpoint says done",
     )
-    mid = api_ids_for_argparse()
+    oids = ollama_ids_for_argparse()
     p.add_argument(
-        "--model-vision",
-        choices=mid,
+        "--ollama-model",
+        choices=oids,
         default=None,
         metavar="MODEL",
-        help="Gemini model for PDF→markdown (parse problems & solutions).",
-    )
-    p.add_argument(
-        "--model-structured",
-        choices=mid,
-        default=None,
-        metavar="MODEL",
-        help="Gemini model for markdown→JSON structured extraction.",
-    )
-    p.add_argument(
-        "--model-fix-identify",
-        choices=mid,
-        default=None,
-        metavar="MODEL",
-        help="Gemini model for LaTeX issue identification (fix_latex).",
-    )
-    p.add_argument(
-        "--model-fix-repair",
-        choices=mid,
-        default=None,
-        metavar="MODEL",
-        help="Gemini model for LaTeX repair calls (fix_latex).",
+        help="Ollama model for markdown → JSON (parse problems & solutions).",
     )
     return p
 
 
+def _register_nougat_gpu_cleanup_on_signals() -> None:
+    """
+    Register SIGTERM/SIGINT handlers that release Nougat GPU resources before process exit.
+
+    The handler reinstates the default behavior and re-sends the signal to preserve
+    normal termination semantics. ``kill -9`` cannot be intercepted.
+    """
+    from exam_parser.parsers.nougat_local_gpu import release_nougat_gpu_resources
+
+    log = logging.getLogger(__name__)
+
+    def _handler(signum: int, frame: object | None) -> None:
+        try:
+            release_nougat_gpu_resources(log=log.info)
+        except Exception:
+            log.exception("Nougat GPU release after signal failed")
+        signal.signal(signum, signal.SIG_DFL)
+        os.kill(os.getpid(), signum)
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _handler)
+        except ValueError:
+            log.debug("Skipping signal %s registration (not main thread or unsupported)", sig)
+
+
 def main() -> None:
+    """Parse CLI args, build pipeline config, and run the async pipeline entrypoint."""
     # Set up console logging for profu_logging
-    import logging
-    import sys
     from profu_logging.log_utils import ColoredJsonFormatter
 
     root_logger = logging.getLogger("ai_backend.json")
@@ -118,11 +129,10 @@ def main() -> None:
         start_from=args.start_from,
         dry_run=args.dry_run,
         overwrite=args.overwrite,
-        model_vision=args.model_vision,
-        model_structured=args.model_structured,
-        model_fix_identify=args.model_fix_identify,
-        model_fix_repair=args.model_fix_repair,
+        ollama_model=args.ollama_model,
     )
+
+    _register_nougat_gpu_cleanup_on_signals()
 
     try:
         asyncio.run(run_pipeline(config))

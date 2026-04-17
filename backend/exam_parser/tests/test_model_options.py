@@ -1,5 +1,5 @@
 """
-Unit tests for exam_parser.pipeline.model_options (LLM preset helpers).
+Unit tests for exam_parser.pipeline.model_options (Ollama model id).
 """
 
 from __future__ import annotations
@@ -7,30 +7,31 @@ from __future__ import annotations
 from exam_parser.pipeline import model_options
 
 
-def test_api_ids_for_argparse_order_matches_choices() -> None:
-    """``api_ids_for_argparse`` preserves order from ``LLM_MODEL_CHOICES``."""
-    ids = model_options.api_ids_for_argparse()
-    assert ids == [pair[1] for pair in model_options.LLM_MODEL_CHOICES]
+def test_ollama_ids_for_argparse_order_matches_choices() -> None:
+    """``ollama_ids_for_argparse`` matches ``OLLAMA_MODEL_CHOICES``."""
+    ids = model_options.ollama_ids_for_argparse()
+    assert ids == [pair[1] for pair in model_options.OLLAMA_MODEL_CHOICES]
 
 
-def test_label_for_api_id_known() -> None:
-    """Known API id resolves to its display label."""
-    mid = model_options.DEFAULT_LLM_MODEL_ID
-    lbl = model_options.label_for_api_id(mid)
-    assert lbl == "Gemini 2.5 Flash Lite (default)"
+def test_label_for_ollama_id_known() -> None:
+    """Known Ollama id resolves to its display label."""
+    mid = model_options.DEFAULT_OLLAMA_MODEL_ID
+    lbl = model_options.label_for_ollama_id(mid)
+    assert lbl == "Llama 3.1 8B"
 
 
-def test_label_for_api_id_unknown_returns_raw() -> None:
-    """Unknown API id is returned unchanged."""
-    assert model_options.label_for_api_id("unknown-model-id") == "unknown-model-id"
+def test_label_for_ollama_id_unknown_returns_raw() -> None:
+    """Unknown Ollama id is returned unchanged."""
+    assert model_options.label_for_ollama_id("unknown-model-id") == "unknown-model-id"
 
 
-def test_default_llm_model_index_points_at_flash_lite() -> None:
-    """Default index matches Flash Lite entry in argparse choices."""
-    idx = model_options.default_llm_model_index()
-    assert model_options.api_ids_for_argparse()[idx] == model_options.DEFAULT_LLM_MODEL_ID
+def test_default_ollama_model_index_is_zero() -> None:
+    """Single-choice list: default index is 0."""
+    idx = model_options.default_ollama_model_index()
+    assert idx == 0
+    assert model_options.ollama_ids_for_argparse()[idx] == model_options.DEFAULT_OLLAMA_MODEL_ID
 
 
-def test_default_llm_model_id_is_flash_lite() -> None:
-    """Default constant matches third preset (Flash Lite)."""
-    assert model_options.DEFAULT_LLM_MODEL_ID == "gemini-2.5-flash-lite"
+def test_default_ollama_model_id_is_llama31_8b() -> None:
+    """Pinned UI/CLI model."""
+    assert model_options.DEFAULT_OLLAMA_MODEL_ID == "llama3.1:8b"

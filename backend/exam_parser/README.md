@@ -1,8 +1,6 @@
 # Exam Parser (Bacalaureat)
 
-Parse bacalaureat exam PDFs to markdown with LaTeX math using **Gemini 2.0 Vision**. One PDF in, one `.md` out (structure, headings, and math preserved as `$...$` and `$$...$$`).
-
-No endpoints or frontend; runs locally with `GOOGLE_API_KEY` for the Gemini API.
+Offline ingestion pipeline: **local PDF → Nougat** (`facebook/nougat-small` on **GPU/CPU**) **→ markdown → Ollama** (JSON) **→ merge → Supabase → vector index**. Model weights load from the Hugging Face Hub on first run (no cloud jobs).
 
 ## Setup
 
@@ -12,68 +10,23 @@ From the **repo root**:
 uv sync
 ```
 
-- **Python**: 3.11+.
-- **API key**: Set `GOOGLE_API_KEY` in the environment (use the single `.env` at repo root; copy `.env.example` to `.env` and fill it).
+Use the repo root `.env` (see `.env.example`): `GOOGLE_API_KEY` (embeddings), Supabase keys, Ollama URL/model. For Nougat on GPU, install a **CUDA** (or Apple **MPS**) PyTorch build; `NOUGAT_DEVICE=auto` picks CUDA, then MPS, then CPU.
 
 ## Usage
 
-Run from the **repo root**:
+**CLI** (from repo root):
 
 ```bash
-# Single PDF — output: same dir as PDF, <stem>.md (or use -o FILE)
-uv run python -m exam_parser.run path/to/exam.pdf
-uv run python -m exam_parser.run path/to/exam.pdf --output path/to/out.md
-
-# Batch — all PDFs in a folder; outputs to <dir>/vision_outputs/<stem>.md (skips existing)
-uv run python -m exam_parser.run --batch path/to/downloads
+uv run python -m exam_parser.pipeline.cli --run-name MY_RUN \
+  --problems-dir path/to/problems_pdfs \
+  --solutions-dir path/to/solutions_pdfs
 ```
 
-## Output
-
-- **Single file**: Default path is `{pdf_dir}/{stem}.md`. Use `-o` or `--output` to set a custom path.
-- **Batch**: Outputs go to `{dir}/vision_outputs/{stem}.md`. Files that already exist are skipped.
-
-Output is markdown with inline math `$...$` and display math `$$...$$` for use in the app or further processing.
-
-## Scoring scale (solutions) parsing
-
-Scoring-scale (barem/rezolvare) PDFs can be parsed into structured JSON with solution steps and scores. Each PDF may contain one subject (Subiectul I, II, or III) or all three. The pipeline is:
-
-1. **Vision**: Gemini 2.0 Vision extracts text from the PDF and outputs markdown with structure and LaTeX/markdown formulas (`$...$`, `$$...$$`).
-2. **Structure**: A second Gemini call turns that markdown into JSON with keys `s1`, `s2`, `s3` (only subjects present in the document). For each exercise: `number`, optional `item` (a/b/c/d for s2/s3), and `solution_steps` — either an array of `{"step": "...", "score": <number>}` when the solution is in a table, or a single string when it is plain text.
-
-From the **repo root**:
+**Streamlit UI**:
 
 ```bash
-# Single PDF or directory of PDFs; outputs are saved in the same folder as the PDF(s)
-uv run python -m exam_parser.run_solutions path/to/solution.pdf
-uv run python -m exam_parser.run_solutions path/to/downloads
-uv run python -m exam_parser.run_solutions path/to/downloads --output-dir path/to/base --skip-existing
-
-# Re-run only PDFs whose JSON has null or empty step fields (fixes bad markdown parsing)
-uv run python -m exam_parser.run_solutions path/to/downloads --rerun-null-steps
+uv run poe exam_parser_ui
+# or: uv run streamlit run backend/exam_parser/pipeline/ui.py
 ```
 
-- **Output location**: By default, outputs are under the folder containing the PDF(s). Two subfolders are created:
-  - **vision_outputs_solutions/** — intermediate markdown from Gemini Vision (one `.md` per PDF, same stem).
-  - **structured_output_solutions/** — final JSON (one `.json` per PDF, same stem).
-- Use `--output-dir` / `-o` to use a different base directory for both subfolders.
-- **`--skip-existing`**: Skip PDFs that already have a corresponding `.json` in `structured_output_solutions/`.
-- **`--rerun-null-steps`**: Scan `structured_output_solutions/` for JSONs with null or empty step fields and re-run vision + structured extraction for the corresponding PDFs in the same folder.
-
-## Loading merged exams into Postgres (Supabase)
-
-After merging exam + solution JSONs (e.g. with the crawler’s `match_exam_solutions.py`), you can insert all problems into the local Supabase `exam_problems` table:
-
-```bash
-# From repo root; ensure migration add_exam_problems_solution.sql has been applied
-uv run python -m exam_parser.load_merged_to_db --merged-dir path/to/structured_output_merged
-uv run python -m exam_parser.load_merged_to_db --merged-dir path/to/structured_output_merged --source exam
-uv run python -m exam_parser.load_merged_to_db --merged-dir path/to/structured_output_merged --dry-run
-```
-
-- **Env**: Use the repo root `.env`; set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_ANON_KEY`) for your local Supabase instance.
-- **Default merged dir** (if `--merged-dir` is omitted): `../crawler/downloads/structured_output_merged`.
-- **`--source`**: One of `var`, `exam`, `test` (default: `var`).
-- **`--dry-run`**: Only discover files and count rows; no insert.
-- One run inserts all problems from all `*_merged.json` files in the given directory. Year is parsed from each filename.
+Run outputs live under `backend/exam_parser/runs/<run_name>/` (`01_problems_parsed/`, `02_solutions_parsed/`, `03_merged/`). The `load_to_db` step reads merged JSON from `03_merged/` and inserts into Supabase `exam_problems`.

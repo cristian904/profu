@@ -20,39 +20,38 @@ from pathlib import Path
 
 import streamlit as st
 
-from exam_parser.pipeline.model_options import (
-    api_ids_for_argparse,
-    default_llm_model_index,
-    label_for_api_id,
-)
+from exam_parser.pipeline.model_options import DEFAULT_OLLAMA_MODEL_ID
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
 STEP_NAMES: list[str] = [
+    "extract_problems",
     "parse_problems",
+    "extract_solutions",
     "parse_solutions",
     "merge",
-    "fix_latex",
     "load_to_db",
     "index_to_vector_db",
 ]
 
 STEP_LABELS: dict[str, str] = {
-    "parse_problems":    "Parse\nProblems",
-    "parse_solutions":   "Parse\nSolutions",
-    "merge":             "Merge",
-    "fix_latex":         "Fix\nLaTeX",
-    "load_to_db":        "Load\nto DB",
-    "index_to_vector_db":"Index\nVectors",
+    "extract_problems":   "Extract\nProblems",
+    "parse_problems":     "Parse\nProblems",
+    "extract_solutions":  "Extract\nSolutions",
+    "parse_solutions":    "Parse\nSolutions",
+    "merge":              "Merge",
+    "load_to_db":         "Load\nto DB",
+    "index_to_vector_db": "Index\nVectors",
 }
 
 STEP_ICONS: dict[str, str] = {
-    "parse_problems":    "📄",
-    "parse_solutions":   "📝",
-    "merge":             "🔗",
-    "fix_latex":         "🔧",
-    "load_to_db":        "🗄",
-    "index_to_vector_db":"🔍",
+    "extract_problems":   "📥",
+    "parse_problems":     "📄",
+    "extract_solutions":  "📥",
+    "parse_solutions":    "📝",
+    "merge":              "🔗",
+    "load_to_db":         "🗄",
+    "index_to_vector_db": "🔍",
 }
 
 _PIPELINE_DIR  = Path(__file__).resolve().parent          # pipeline/
@@ -261,15 +260,15 @@ def _refresh_progress(run_name: str, prob_dir: str, sol_dir: str) -> None:
     root = RUNS_DIR / run_name
     n_prob   = _n(prob_dir,             "*.pdf")
     n_sol    = _n(sol_dir,              "*.pdf")
-    n_merged = _n(root / "03_merged",   "*.json")
-    n_fixed  = _n(root / "04_fixed",    "*.json")
+    n_merged = _n(root / "03_merged",   "*_merged.md")
 
     totals = {
-        "parse_problems":    n_prob,
-        "parse_solutions":   n_sol,
-        "merge":             n_prob or n_merged,
-        "fix_latex":         n_merged or n_prob,
-        "load_to_db":        n_fixed or n_merged,
+        "extract_problems":   n_prob,
+        "parse_problems":     n_prob,
+        "extract_solutions":  n_sol,
+        "parse_solutions":    n_sol,
+        "merge":              n_prob or n_merged,
+        "load_to_db":         n_merged or n_prob,
         "index_to_vector_db": 0,
     }
 
@@ -445,20 +444,21 @@ def _consume_tl_step_query() -> None:
 
 
 def _timeline_html(progress: dict, selected: str | None) -> str:
-    """Horizontal timeline with parse problems + parse solutions stacked vertically."""
+    """Timeline: first column stacks extract/parse for problems then solutions; then merge → DB → index."""
     parts: list[str] = []
-    s0, s1 = STEP_NAMES[0], STEP_NAMES[1]
-    st0 = progress.get(s0, {}).get("status", "pending")
-    st1 = progress.get(s1, {}).get("status", "pending")
+    stack_steps = STEP_NAMES[:4]
 
     parts.append('<div class="tl-stack">')
-    parts.append(_tl_node_html(s0, progress, selected))
-    vcls = _tl_v_conn_class(st0, st1)
-    parts.append(f'<div class="tl-conn-v {vcls}"></div>')
-    parts.append(_tl_node_html(s1, progress, selected))
+    for i, step in enumerate(stack_steps):
+        parts.append(_tl_node_html(step, progress, selected))
+        if i < len(stack_steps) - 1:
+            st_a = progress.get(stack_steps[i], {}).get("status", "pending")
+            st_b = progress.get(stack_steps[i + 1], {}).get("status", "pending")
+            vcls = _tl_v_conn_class(st_a, st_b)
+            parts.append(f'<div class="tl-conn-v {vcls}"></div>')
     parts.append("</div>")
 
-    for i in range(2, len(STEP_NAMES)):
+    for i in range(4, len(STEP_NAMES)):
         step = STEP_NAMES[i]
         prev = STEP_NAMES[i - 1]
         prev_st = progress.get(prev, {}).get("status", "pending")
@@ -490,24 +490,6 @@ def _log_html(logs: list[dict]) -> str:
     return '<div class="log-win" id="lw">' + "".join(lines) + "</div>" + scroll
 
 
-# ── LLM model widgets ─────────────────────────────────────────────────────────
-
-def _llm_model_selectbox(label: str, session_key: str) -> None:
-    """
-    Selectbox bound to *session_key*; value is the Gemini API model id string.
-
-    Default option is Flash Lite (see ``model_options.DEFAULT_LLM_MODEL_ID``).
-    """
-    ids = api_ids_for_argparse()
-    st.selectbox(
-        label,
-        options=ids,
-        index=default_llm_model_index(),
-        format_func=label_for_api_id,
-        key=session_key,
-    )
-
-
 # ── Pipeline launcher ─────────────────────────────────────────────────────────
 
 def _launch(
@@ -518,10 +500,6 @@ def _launch(
     dry: bool,
     overwrite: bool,
     start_from: str | None,
-    model_vision: str,
-    model_structured: str,
-    model_fix_identify: str,
-    model_fix_repair: str,
 ) -> None:
     cmd = [
         sys.executable, "-m", "exam_parser.pipeline.cli",
@@ -529,10 +507,7 @@ def _launch(
         "--problems-dir", prob,
         "--solutions-dir", sol,
         "--source", source,
-        "--model-vision", model_vision,
-        "--model-structured", model_structured,
-        "--model-fix-identify", model_fix_identify,
-        "--model-fix-repair", model_fix_repair,
+        "--ollama-model", DEFAULT_OLLAMA_MODEL_ID,
     ]
     if dry:
         cmd.append("--dry-run")
@@ -678,17 +653,14 @@ def main() -> None:
         with c6:
             st.checkbox("Overwrite", key="_overwrite")
 
-        st.markdown("**Gemini models (LLM steps)**")
+        st.markdown("**Ollama (markdown → JSON)**")
         st.caption(
-            "Vector embedding for the index step still uses `gemini-embedding-001` from settings / `.env`."
+            f"Model fix: **{DEFAULT_OLLAMA_MODEL_ID}**. Rulează `ollama pull {DEFAULT_OLLAMA_MODEL_ID}` dacă nu e instalat."
         )
-        lm1, lm2 = st.columns(2)
-        with lm1:
-            _llm_model_selectbox("Vision — PDF → markdown", "_model_vision")
-            _llm_model_selectbox("Fix LaTeX — identify issues", "_model_fix_identify")
-        with lm2:
-            _llm_model_selectbox("Structured — markdown → JSON", "_model_structured")
-            _llm_model_selectbox("Fix LaTeX — repair text", "_model_fix_repair")
+        st.caption(
+            "Extragere PDF: **Nougat** local (`NOUGAT_DEVICE=auto` → CUDA, MPS sau CPU). "
+            "Index vectori: `gemini-embedding-001`."
+        )
 
     st.markdown('<hr class="sep">', unsafe_allow_html=True)
 
@@ -707,10 +679,6 @@ def main() -> None:
                 st.session_state._dry_run,
                 st.session_state._overwrite,
                 None,
-                st.session_state._model_vision,
-                st.session_state._model_structured,
-                st.session_state._model_fix_identify,
-                st.session_state._model_fix_repair,
             )
             st.rerun()
 
@@ -737,10 +705,6 @@ def main() -> None:
                 st.session_state._dry_run,
                 st.session_state._overwrite,
                 sf,
-                st.session_state._model_vision,
-                st.session_state._model_structured,
-                st.session_state._model_fix_identify,
-                st.session_state._model_fix_repair,
             )
             st.rerun()
 
@@ -772,11 +736,21 @@ def main() -> None:
         with pc1:
             st.progress(frac)
         with pc2:
-            label = "✓ Done" if stat == "done" else ("⚙ Running" if stat == "running"
+            status_text = "✓ Done" if stat == "done" else ("⚙ Running" if stat == "running"
                     else ("✗ Failed" if stat == "failed" else "— Pending"))
-            st.metric("", label)
+            # Streamlit requires a non-empty label (a11y); hide it to keep the compact layout.
+            st.metric(
+                "Stare pas",
+                status_text,
+                label_visibility="collapsed",
+            )
         with pc3:
-            st.metric("", f"{comp}/{tot}" if tot else ("✓" if stat == "done" else "—"))
+            count_text = f"{comp}/{tot}" if tot else ("✓" if stat == "done" else "—")
+            st.metric(
+                "Progres fișiere",
+                count_text,
+                label_visibility="collapsed",
+            )
 
     st.markdown('<hr class="sep">', unsafe_allow_html=True)
 

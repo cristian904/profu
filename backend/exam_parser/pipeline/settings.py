@@ -1,4 +1,6 @@
 """Configuration managed by pydantic-settings."""
+from __future__ import annotations
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,11 +12,17 @@ class PipelineSettings(BaseSettings):
     supabase_service_role_key: str | None = None
     supabase_anon_key: str | None = None
 
-    model_vision: str = "gemini-2.5-flash"
-    model_structured: str = "gemini-2.5-flash"
-    model_fix_identify: str = "gemini-2.5-flash"
-    model_fix_repair: str = "gemini-2.5-flash-lite-preview-02-05" # Defaulting to the latest lite preview 
+    # Gemini embeddings (vector index step)
     model_embed: str = "gemini-embedding-001"
+
+    # Ollama — markdown → JSON (parse_problems / parse_solutions)
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "llama3.1:8b"
+
+    # Nougat PDF → markdown (local only; weights downloaded from Hugging Face Hub on first run)
+    nougat_model_id: str = "facebook/nougat-small"
+    # auto | cuda | cuda:N | mps | cpu — ``auto`` picks CUDA, then Apple MPS, then CPU
+    nougat_device: str = "auto"
 
     model_config = SettingsConfigDict(
         env_file=".env",
