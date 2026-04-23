@@ -1,5 +1,8 @@
-"""Crawl variante-mate.ro M1 variant pages and download the 6 PDFs per variant.
-All logic in one file; other crawlers can be added below or in the same script."""
+"""Crawl variante-mate.ro M1 variant pages and download 6 PDFs per variant.
+
+Files are stored under root downloads in separate problems/solutions folders,
+while keeping the same filename for each problem-solution pair.
+"""
 
 import sys
 import time
@@ -12,10 +15,13 @@ from bs4 import BeautifulSoup
 # --- Direct PDF URLs (BAC-M1-2009 statements, RBAC-M1-2009 solutions) ---
 STATEMENT_BASE = "https://variante-mate.ro/bacalaureat/BAC-M1-2009"
 SOLUTION_BASE = "https://variante-mate.ro/bacalaureat/RBAC-M1-2009"
-STATEMENT_PATHS = [("i", "s1_statement"), ("ii", "s2_statement"), ("iii", "s3_statement")]
-SOLUTION_PATHS = [("i", "s1_solution"), ("ii", "s2_solution"), ("iii", "s3_solution")]
+STATEMENT_PATHS = [("i", 1), ("ii", 2), ("iii", 3)]
+SOLUTION_PATHS = [("i", 1), ("ii", 2), ("iii", 3)]
 
-DOWNLOAD_DIR = Path(__file__).resolve().parent / "downloads"
+ROOT_DOWNLOAD_DIR = Path(__file__).resolve().parents[2] / "downloads"
+RUN_FOLDER = "var_2009"
+PROBLEMS_DIR = ROOT_DOWNLOAD_DIR / RUN_FOLDER / "problems"
+SOLUTIONS_DIR = ROOT_DOWNLOAD_DIR / RUN_FOLDER / "solutions"
 DELAY_SECONDS = 1.5
 
 HEADERS = {
@@ -41,14 +47,18 @@ def resolve_and_download(client: httpx.Client, url: str) -> bytes | None:
         return None
 
 
-def links_for_variant(variant: int) -> list[tuple[str, str]]:
-    """Build the 6 (url, filename_suffix) pairs for a variant from the direct PDF URL pattern."""
+def links_for_variant(variant: int) -> list[tuple[str, str, int]]:
+    """Build the 6 direct links for a variant.
+
+    Returns tuples of (url, document_kind, subject_number), where document_kind is
+    "problem" or "solution".
+    """
     v = f"{variant:03d}"
-    out = []
-    for path, suffix in STATEMENT_PATHS:
-        out.append((f"{STATEMENT_BASE}/d_mt1_{path}_{v}.pdf", suffix))
-    for path, suffix in SOLUTION_PATHS:
-        out.append((f"{SOLUTION_BASE}/d_mt1_{path}_{v}.pdf", suffix))
+    out: list[tuple[str, str, int]] = []
+    for path, subject in STATEMENT_PATHS:
+        out.append((f"{STATEMENT_BASE}/d_mt1_{path}_{v}.pdf", "problem", subject))
+    for path, subject in SOLUTION_PATHS:
+        out.append((f"{SOLUTION_BASE}/d_mt1_{path}_{v}.pdf", "solution", subject))
     return out
 
 
@@ -93,18 +103,25 @@ def extract_pdf_links(html: str, page_url: str) -> list[tuple[str, str]]:
 
 
 def main() -> None:
+    """Run crawler and save paired files in problems/solutions folders."""
     _log("Crawler starting...")
-    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    _log(f"Download dir: {DOWNLOAD_DIR}")
+    ROOT_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    PROBLEMS_DIR.mkdir(parents=True, exist_ok=True)
+    SOLUTIONS_DIR.mkdir(parents=True, exist_ok=True)
+    _log(f"Root download dir: {ROOT_DOWNLOAD_DIR}")
+    _log(f"Run folder: {ROOT_DOWNLOAD_DIR / RUN_FOLDER}")
+    _log(f"Problems dir: {PROBLEMS_DIR}")
+    _log(f"Solutions dir: {SOLUTIONS_DIR}")
 
     with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=30.0) as client:
         for variant in range(1, 101):
             _log(f"Variant {variant}: downloading 6 PDFs ...")
             links = links_for_variant(variant)
 
-            for url, suffix in links:
-                filename = f"2009_M1_v{variant}_{suffix}.pdf"
-                filepath = DOWNLOAD_DIR / filename
+            for url, document_kind, subject in links:
+                filename = f"2009_M1_v{variant}_s{subject}.pdf"
+                target_dir = PROBLEMS_DIR if document_kind == "problem" else SOLUTIONS_DIR
+                filepath = target_dir / filename
                 if filepath.exists():
                     _log(f"  Skip (exists): {filename}")
                     continue

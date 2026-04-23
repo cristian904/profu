@@ -9,8 +9,14 @@ Python module that downloads bacalaureat M1 PDFs (enunturi + rezolvari) from [va
 
 ## Output
 
-- PDFs are saved under `downloads/` (gitignored).
-- Naming: `2009_M1_v{N}_s{1|2|3}_{statement|solution}.pdf` (e.g. `2009_M1_v1_s1_statement.pdf`, `2009_M1_v1_s2_solution.pdf`).
+- All crawler files are saved under root `downloads/` (gitignored).
+- Each crawler writes to its own run folder:
+  - `downloads/var_2009/`
+  - `downloads/heiprofu/`
+- Inside each run folder:
+  - `problems/` contains problem statements
+  - `solutions/` contains solutions/barems
+- Problem and solution pairs share the same filename (for example, `downloads/var_2009/problems/2009_M1_v1_s1.pdf` matches `downloads/var_2009/solutions/2009_M1_v1_s1.pdf`).
 
 ## Setup
 

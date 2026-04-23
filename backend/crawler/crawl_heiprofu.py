@@ -2,6 +2,7 @@
 Scrapes https://heiprofu.ro/examene-matematica/bacalaureat-matematica/subiecte-bac-m1-mate-info/
 and downloads every linked PDF (past exams and training tests with their solutions)."""
 
+import re
 import sys
 import time
 from pathlib import Path
@@ -11,7 +12,10 @@ import httpx
 from bs4 import BeautifulSoup
 
 INDEX_URL = "https://heiprofu.ro/examene-matematica/bacalaureat-matematica/subiecte-bac-m1-mate-info/"
-DOWNLOAD_DIR = Path(__file__).resolve().parent / "downloads_exams"
+ROOT_DOWNLOAD_DIR = Path(__file__).resolve().parents[2] / "downloads"
+RUN_FOLDER = "heiprofu"
+PROBLEMS_DIR = ROOT_DOWNLOAD_DIR / RUN_FOLDER / "problems"
+SOLUTIONS_DIR = ROOT_DOWNLOAD_DIR / RUN_FOLDER / "solutions"
 DELAY_SECONDS = 1.5
 
 HEADERS = {
@@ -31,6 +35,29 @@ def filename_from_url(url: str) -> str:
     return unquote(name)
 
 
+def classify_document(url: str, link_text: str, filename: str) -> str:
+    """Classify a PDF as problem or solution from URL, link text, and filename."""
+    context = f"{url} {link_text} {filename}".lower()
+    solution_keywords = ["barem", "bar", "rezolvare", "rezolvari", "solutie", "solutii", "solution"]
+    for keyword in solution_keywords:
+        if keyword in context:
+            return "solution"
+    return "problem"
+
+
+def paired_filename(filename: str) -> str:
+    """Normalize filename so problems and solutions share the same paired basename."""
+    stem = Path(filename).stem.lower()
+    stem = unquote(stem)
+    # Canonicalize statement/solution tokens so both sides resolve to same name.
+    stem = re.sub(r"\b(varianta|var|subiect|test)\b", "item", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"\b(barem|bar|rezolvare|rezolvari|solutie|solutii|solution|solutions)\b", "item", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"[_\-\s]+", "_", stem).strip("_")
+    if not stem:
+        stem = "document"
+    return f"{stem}.pdf"
+
+
 def resolve_and_download(client: httpx.Client, url: str) -> bytes | None:
     """GET the URL. If response is application/pdf, return its bytes. Returns None if no PDF."""
     try:
@@ -44,28 +71,42 @@ def resolve_and_download(client: httpx.Client, url: str) -> bytes | None:
         return None
 
 
-def extract_pdf_links(html: str, page_url: str) -> list[tuple[str, str]]:
-    """Find all PDF links under wp-content/uploads. Returns [(url, filename), ...] (deduplicated by filename)."""
+def extract_pdf_links(html: str, page_url: str) -> list[tuple[str, str, str]]:
+    """Find and classify PDF links.
+
+    Returns tuples of (url, document_kind, paired_filename), deduplicated per
+    (document_kind, paired_filename).
+    """
     soup = BeautifulSoup(html, "html.parser")
-    seen: set[str] = set()
-    out: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    out: list[tuple[str, str, str]] = []
     for a in soup.find_all("a", href=True):
         href = a["href"].strip()
         if not href.lower().endswith(".pdf") or "/wp-content/uploads/" not in href:
             continue
         full_url = urljoin(page_url, href)
         name = filename_from_url(full_url)
-        if name in seen:
+        link_text = (a.get_text() or "").strip()
+        document_kind = classify_document(full_url, link_text, name)
+        normalized_name = paired_filename(name)
+        key = (document_kind, normalized_name)
+        if key in seen:
             continue
-        seen.add(name)
-        out.append((full_url, name))
+        seen.add(key)
+        out.append((full_url, document_kind, normalized_name))
     return out
 
 
 def main() -> None:
+    """Run crawler and save files under root downloads/heiprofu."""
     _log("Hei Profu crawler starting...")
-    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    _log(f"Download dir: {DOWNLOAD_DIR}")
+    ROOT_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    PROBLEMS_DIR.mkdir(parents=True, exist_ok=True)
+    SOLUTIONS_DIR.mkdir(parents=True, exist_ok=True)
+    _log(f"Root download dir: {ROOT_DOWNLOAD_DIR}")
+    _log(f"Run folder: {ROOT_DOWNLOAD_DIR / RUN_FOLDER}")
+    _log(f"Problems dir: {PROBLEMS_DIR}")
+    _log(f"Solutions dir: {SOLUTIONS_DIR}")
 
     with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=30.0) as client:
         _log(f"Fetching index: {INDEX_URL}")
@@ -74,8 +115,9 @@ def main() -> None:
         links = extract_pdf_links(resp.text, INDEX_URL)
         _log(f"Found {len(links)} PDF links (exams + barem)")
 
-        for url, filename in links:
-            filepath = DOWNLOAD_DIR / filename
+        for url, document_kind, filename in links:
+            target_dir = PROBLEMS_DIR if document_kind == "problem" else SOLUTIONS_DIR
+            filepath = target_dir / filename
             if filepath.exists():
                 _log(f"  Skip (exists): {filename}")
                 continue
