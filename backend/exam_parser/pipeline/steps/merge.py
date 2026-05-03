@@ -1,7 +1,9 @@
-"""Step 3 — Merge problem and solution structured markdown files by matching filenames."""
+"""Step 3 — Merge problem and solution structured artifacts by matching filenames."""
 from __future__ import annotations
 
+import json
 import traceback
+from pathlib import Path
 from typing import Any
 
 from profu_logging.feature_logger import FeatureLogger
@@ -72,6 +74,26 @@ def merge_exam_with_solution(exam_data: dict, solution_data: dict) -> dict:
     return result
 
 
+def _load_structured_problems(path: Path) -> dict:
+    """Load structured problems from JSON (preferred) or legacy markdown."""
+    if path.suffix.lower() == ".json":
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"Structured problems JSON must be an object: {path.name}")
+        return data
+    return parse_problems_markdown(path.read_text(encoding="utf-8")).to_exam_dict()
+
+
+def _load_structured_solutions(path: Path) -> dict:
+    """Load structured solutions from JSON (preferred) or legacy markdown."""
+    if path.suffix.lower() == ".json":
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"Structured solutions JSON must be an object: {path.name}")
+        return data
+    return parse_solutions_markdown(path.read_text(encoding="utf-8")).to_solution_dict()
+
+
 # ---------------------------------------------------------------------------
 # Step entry point
 # ---------------------------------------------------------------------------
@@ -82,19 +104,26 @@ async def run(
     checkpoint: Checkpoint,
     logger: FeatureLogger,
 ) -> None:
-    """Match problem markdown with solution markdown by filename, merge, write merged markdown."""
-    problem_mds = sorted(dirs.problems_structured.glob("*.md"))
-    if not problem_mds:
-        logger.warning(f"[{STEP_NAME}] No problem markdown files found in {dirs.problems_structured}")
+    """Match structured problem/solution artifacts by stem, merge, write merged markdown."""
+    problem_files = sorted(
+        list(dirs.problems_structured.glob("*.json")) + list(dirs.problems_structured.glob("*.md"))
+    )
+    if not problem_files:
+        logger.warning(f"[{STEP_NAME}] No structured problem files found in {dirs.problems_structured}")
         return
 
     # Build lookup of available solution files by stem
-    solution_stems = {p.stem: p for p in dirs.solutions_structured.glob("*.md")}
+    solution_stems = {
+        p.stem: p
+        for p in sorted(
+            list(dirs.solutions_structured.glob("*.json")) + list(dirs.solutions_structured.glob("*.md"))
+        )
+    }
 
-    pending = [p for p in problem_mds if not checkpoint.is_file_done(STEP_NAME, p.name)]
+    pending = [p for p in problem_files if not checkpoint.is_file_done(STEP_NAME, p.name)]
     logger.info(
-        f"[{STEP_NAME}] {len(problem_mds)} problem markdown files, "
-        f"{len(problem_mds) - len(pending)} already merged, "
+        f"[{STEP_NAME}] {len(problem_files)} structured problem files, "
+        f"{len(problem_files) - len(pending)} already merged, "
         f"{len(pending)} to process"
     )
 
@@ -118,12 +147,8 @@ async def run(
             continue
 
         try:
-            exam_data = parse_problems_markdown(
-                problem_path.read_text(encoding="utf-8")
-            ).to_exam_dict()
-            sol_data = parse_solutions_markdown(
-                solution_path.read_text(encoding="utf-8")
-            ).to_solution_dict()
+            exam_data = _load_structured_problems(problem_path)
+            sol_data = _load_structured_solutions(solution_path)
             merged = merge_exam_with_solution(exam_data, sol_data)
             out_path = dirs.merged / f"{stem}_merged.md"
             merged_doc = MergedDocument.from_merge_dict(merged)
@@ -131,8 +156,11 @@ async def run(
             checkpoint.mark_file_done(STEP_NAME, problem_path.name)
             merged_count += 1
         except Exception as exc:
+            logger.warning(
+                f"[{STEP_NAME}] Skipping pair for {problem_path.name} after merge failure: {exc}"
+            )
             logger.error(exc, traceback=traceback.format_exc())
-            raise
+            skipped_count += 1
 
     if not config.dry_run:
         checkpoint.mark_step_done(STEP_NAME)

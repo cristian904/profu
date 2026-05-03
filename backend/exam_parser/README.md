@@ -1,6 +1,6 @@
 # Exam Parser (Bacalaureat)
 
-Offline ingestion pipeline: **local PDF → Nougat** (`facebook/nougat-small` on **GPU/CPU**) **→ markdown → Ollama** (JSON) **→ merge → Supabase → vector index**. Model weights load from the Hugging Face Hub on first run (no cloud jobs).
+Offline ingestion pipeline: **local PDF → Nougat** (`facebook/nougat-base` on **GPU/CPU**) **→ markdown → Ollama** (JSON) **→ merge → Supabase → vector index**. Model weights load from the Hugging Face Hub on first run (no cloud jobs).
 
 ## Setup
 

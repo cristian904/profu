@@ -17,7 +17,7 @@ def test_label_for_ollama_id_known() -> None:
     """Known Ollama id resolves to its display label."""
     mid = model_options.DEFAULT_OLLAMA_MODEL_ID
     lbl = model_options.label_for_ollama_id(mid)
-    assert lbl == "Llama 3.1 8B"
+    assert lbl == "Qwen 2.5 Coder 7B"
 
 
 def test_label_for_ollama_id_unknown_returns_raw() -> None:
@@ -32,6 +32,6 @@ def test_default_ollama_model_index_is_zero() -> None:
     assert model_options.ollama_ids_for_argparse()[idx] == model_options.DEFAULT_OLLAMA_MODEL_ID
 
 
-def test_default_ollama_model_id_is_llama31_8b() -> None:
+def test_default_ollama_model_id_is_qwen25_coder_7b() -> None:
     """Pinned UI/CLI model."""
-    assert model_options.DEFAULT_OLLAMA_MODEL_ID == "llama3.1:8b"
+    assert model_options.DEFAULT_OLLAMA_MODEL_ID == "qwen2.5-coder:7b"

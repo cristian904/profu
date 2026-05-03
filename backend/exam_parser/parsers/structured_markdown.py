@@ -58,6 +58,8 @@ SUBJECT_SECTION_RE = re.compile(
     r"^#{2,3}\s*(?:Subject|Subiect)\s+(s[123])\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
+PROBLEM_HEADING_RE = re.compile(r"^#{2,4}\s*Problem\s*$", re.IGNORECASE | re.MULTILINE)
+PROBLEM_NUMBER_HEADING_RE = re.compile(r"^#{2,4}\s*Problem\s+(\d+)\s*$", re.IGNORECASE | re.MULTILINE)
 FRONT_MATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 # Opening fence: ```yaml, ```YAML, ``` yml, etc.
 _YAML_FENCE_OPEN_RE = re.compile(r"^```\s*(yaml|yml)\s*$", re.IGNORECASE)
@@ -239,9 +241,102 @@ def _iter_yaml_fence_bodies(
     return blocks
 
 
+def _iter_unfenced_problem_yaml_bodies(section_text: str) -> list[str]:
+    """
+    Extract YAML-like bodies under ``## Problem`` headings when fences are missing.
+
+    Some model responses keep valid mapping content but omit `````yaml`` fences.
+    This fallback scans each Problem chunk and keeps only chunks that look like
+    problem mappings (e.g. include ``number``/``statement`` keys).
+    """
+    matches = list(PROBLEM_HEADING_RE.finditer(section_text))
+    if not matches:
+        return []
+
+    candidates: list[str] = []
+    for idx, match in enumerate(matches):
+        start = match.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(section_text)
+        chunk = section_text[start:end].strip()
+        if not chunk:
+            continue
+        if _try_parse_problem_yaml_block(chunk, context="unfenced problem chunk") is not None:
+            candidates.append(chunk)
+    return candidates
+
+
+def _extract_heading_value(block: str, heading: str) -> str | None:
+    """Extract text under a ``### <heading>:`` style section until next heading."""
+    inline_pattern = re.compile(
+        rf"^#{{3,4}}\s*{re.escape(heading)}\s*:[ \t]*(?P<value>.+?)\s*$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+    inline_match = inline_pattern.search(block)
+    if inline_match:
+        value = inline_match.group("value").strip()
+        return value if value else None
+
+    pattern = re.compile(
+        rf"^#{{3,4}}\s*{re.escape(heading)}\s*:?\s*$\n(?P<body>.*?)(?=^#{{3,4}}\s+|\Z)",
+        re.IGNORECASE | re.MULTILINE | re.DOTALL,
+    )
+    match = pattern.search(block)
+    if not match:
+        return None
+    value = match.group("body").strip()
+    return value if value else None
+
+
+def _parse_problems_from_problem_heading_sections(section_text: str) -> list[dict[str, Any]]:
+    """
+    Parse fallback problem blocks from ``## Problem <N>`` + ``###`` subsections.
+
+    Expected keys in each problem block:
+    - Statement
+    Optional:
+    - Topic
+    - Difficulty
+    - Items (as markdown bullet list)
+    """
+    matches = list(PROBLEM_NUMBER_HEADING_RE.finditer(section_text))
+    if not matches:
+        return []
+
+    records: list[dict[str, Any]] = []
+    for idx, match in enumerate(matches):
+        number = int(match.group(1))
+        start = match.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(section_text)
+        block = section_text[start:end]
+
+        statement = _extract_heading_value(block, "Statement")
+        items_raw = _extract_heading_value(block, "Items")
+
+        if statement is None:
+            continue
+
+        items: list[str] = []
+        if items_raw:
+            for line in items_raw.splitlines():
+                stripped = line.strip()
+                if stripped.startswith("- "):
+                    items.append(stripped[2:].strip())
+                elif stripped.startswith("* "):
+                    items.append(stripped[2:].strip())
+
+        records.append(
+            {
+                "number": number,
+                "statement": statement,
+                "items": items,
+            }
+        )
+    return records
+
+
 # Typical mapping keys at column 0 — do not indent in the broad repair pass.
 _REPAIR_KNOWN_KEY = re.compile(
-    r"^(?:number|item|item_solutions|solution_steps|choices|subject|topic|difficulty|statement|format|items|"
+    r"^(?:number|item|item_solutions|solution_steps|subject|statement|format|items|"
     r"score|step)\s*:",
     re.IGNORECASE,
 )
@@ -457,6 +552,42 @@ def parse_problems_markdown(
                     )
                     problems_fb.append(ProblemRecord.model_validate(data))
                 return ProblemsDocument.model_validate({subj_fb: problems_fb})
+            # Last fallback: parse unfenced YAML bodies directly under ## Problem headings.
+            problems_unfenced: dict[str, list[ProblemRecord]] = {"s1": [], "s2": [], "s3": []}
+            for subj, sec_body in sections:
+                unfenced_blocks = _iter_unfenced_problem_yaml_bodies(sec_body)
+                if unfenced_blocks:
+                    logger.warning(
+                        "Problems markdown: using %d unfenced YAML problem block(s) for %s",
+                        len(unfenced_blocks),
+                        subj,
+                    )
+                for idx, block in enumerate(unfenced_blocks):
+                    data = _safe_load_yaml_block(
+                        block,
+                        context=f"problems {subj} block {idx + 1} (unfenced fallback)",
+                    )
+                    problems_unfenced[subj].append(ProblemRecord.model_validate(data))
+            non_empty_unfenced = [k for k in ("s1", "s2", "s3") if problems_unfenced[k]]
+            if non_empty_unfenced:
+                kwargs = {k: problems_unfenced[k] for k in non_empty_unfenced}
+                return ProblemsDocument.model_validate(kwargs)
+            # Final fallback for heading-based markdown output (no YAML at all).
+            heading_based: dict[str, list[ProblemRecord]] = {"s1": [], "s2": [], "s3": []}
+            for subj, sec_body in sections:
+                heading_records = _parse_problems_from_problem_heading_sections(sec_body)
+                if heading_records:
+                    logger.warning(
+                        "Problems markdown: using %d heading-based problem block(s) for %s",
+                        len(heading_records),
+                        subj,
+                    )
+                for row in heading_records:
+                    heading_based[subj].append(ProblemRecord.model_validate(row))
+            non_empty_heading = [k for k in ("s1", "s2", "s3") if heading_based[k]]
+            if non_empty_heading:
+                kwargs = {k: heading_based[k] for k in non_empty_heading}
+                return ProblemsDocument.model_validate(kwargs)
         raise ValueError("Problems markdown has Subject sections but no problem blocks were parsed")
 
     if not subject:

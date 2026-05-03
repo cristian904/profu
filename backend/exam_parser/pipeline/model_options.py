@@ -3,7 +3,7 @@ from __future__ import annotations
 
 # Single supported model for markdown → JSON (UI + defaults).
 OLLAMA_MODEL_CHOICES: list[tuple[str, str]] = [
-    ("Llama 3.1 8B", "llama3.1:8b"),
+    ("Qwen 2.5 Coder 7B", "qwen2.5-coder:7b"),
 ]
 
 DEFAULT_OLLAMA_MODEL_ID: str = OLLAMA_MODEL_CHOICES[0][1]

@@ -56,10 +56,10 @@ def _json_to_rows(data: dict, *, year: int | None, source: str) -> list[dict]:
             rows.append({
                 "subject_number": subject_number,
                 "problem_number": num,
-                "choices": problem.get("choices") or [],
+                "choices": [],
                 "items": problem.get("items") or [],
                 "topic": problem.get("topic"),
-                "school_subject": problem.get("subject"),
+                "school_subject": "mate",
                 "difficulty": problem.get("difficulty"),
                 "source": source,
                 "year": year,

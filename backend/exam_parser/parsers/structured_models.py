@@ -3,6 +3,7 @@ Pydantic models for exam structured data (problems, solutions, merged).
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -22,7 +23,13 @@ def _coerce_problem_number(v: Any) -> int:
         s = v.strip()
         if not s:
             raise ValueError("number string is empty")
-        return int(float(s))
+        try:
+            return int(float(s))
+        except ValueError:
+            match = re.search(r"\d+", s)
+            if match is not None:
+                return int(match.group(0))
+            raise ValueError(f"number string is not numeric: {s!r}") from None
     raise TypeError(f"number must be int-coercible, got {type(v).__name__}")
 
 
@@ -47,14 +54,10 @@ def _normalize_step_rows(v: Any) -> list[Any]:
     return out
 
 
-class BaseExamRecord(BaseModel):
-    """Shared fields across problems/solutions."""
+class BaseNumberedRecord(BaseModel):
+    """Shared numeric identity for problems/solutions."""
 
     number: int
-    subject: str = "mate"
-    topic: str | None = None
-    difficulty: str
-    statement: str
 
     @field_validator("number", mode="before")
     @classmethod
@@ -108,29 +111,38 @@ class ItemSolutionBlock(BaseModel):
         return _normalize_step_rows(v)
 
 
-class ProblemRecord(BaseExamRecord):
+class ProblemRecord(BaseNumberedRecord):
     """Problems parse output record."""
 
-    choices: list[str] = Field(default_factory=list)
+    statement: str
     items: list[str] = Field(default_factory=list)
 
 
-class SolutionS1Record(BaseExamRecord):
+class SolutionS1Record(BaseNumberedRecord):
     """S1 solution: one string payload (no intermediate rows)."""
 
     solution_steps: str
 
 
-class SolutionS23Record(BaseExamRecord):
+class SolutionS23Record(BaseNumberedRecord):
     """S2/S3 solution: item_solutions list."""
 
     item_solutions: list[ItemSolutionBlock] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def ensure_item_solutions(self) -> SolutionS23Record:
-        """Require at least one item solution in S2/S3 output."""
-        if not self.item_solutions:
-            raise ValueError("item_solutions must contain at least one item for s2/s3 records")
+        """Require exactly three item blocks ``a``, ``b``, ``c`` (bac-style barem)."""
+        n = len(self.item_solutions)
+        if n != 3:
+            raise ValueError(
+                f"item_solutions must contain exactly 3 blocks (a, b, c), got {n}"
+            )
+        letters = sorted(b.item for b in self.item_solutions)
+        if letters != ["a", "b", "c"]:
+            raise ValueError(
+                "item_solutions must use items a, b, c exactly once each; "
+                f"got {[b.item for b in self.item_solutions]}"
+            )
         return self
 
 
@@ -162,6 +174,30 @@ class ProblemsDocument(BaseModel):
         )
         if not has_any:
             raise ValueError("ProblemsDocument must contain at least one non-empty s1/s2/s3 list")
+        return self
+
+    @model_validator(mode="after")
+    def validate_bac_exercise_counts(self) -> ProblemsDocument:
+        """
+        Enforce fixed baccalaureate-style counts when a subject list is non-empty.
+
+        Subject I: 6 problems. Subjects II and III: 2 problems each; each S2/S3 problem
+        has exactly 3 sub-items (a, b, c).
+        """
+        if self.s1 is not None and len(self.s1) > 0 and len(self.s1) != 6:
+            raise ValueError(f"s1 must contain exactly 6 problems, got {len(self.s1)}")
+        for subj in ("s2", "s3"):
+            rows = getattr(self, subj)
+            if rows is None or len(rows) == 0:
+                continue
+            if len(rows) != 2:
+                raise ValueError(f"{subj} must contain exactly 2 problems, got {len(rows)}")
+            for idx, rec in enumerate(rows, start=1):
+                if len(rec.items) != 3:
+                    raise ValueError(
+                        f"{subj} problem {idx}: must have exactly 3 items (a, b, c), "
+                        f"got {len(rec.items)}"
+                    )
         return self
 
     def subject_key(self) -> SubjectKey:
@@ -197,6 +233,25 @@ class SolutionsDocument(BaseModel):
         )
         if not has_any:
             raise ValueError("SolutionsDocument must contain at least one non-empty s1/s2/s3 list")
+        return self
+
+    @model_validator(mode="after")
+    def validate_bac_solution_counts(self) -> SolutionsDocument:
+        """
+        Enforce fixed counts for non-empty subject lists (same as problems: 6 / 2 / 2).
+
+        Per-exercise ``item_solutions`` shape for S2/S3 is validated on ``SolutionS23Record``.
+        """
+        if self.s1 is not None and len(self.s1) > 0 and len(self.s1) != 6:
+            raise ValueError(f"s1 must contain exactly 6 solution records, got {len(self.s1)}")
+        for subj in ("s2", "s3"):
+            rows = getattr(self, subj)
+            if rows is None or len(rows) == 0:
+                continue
+            if len(rows) != 2:
+                raise ValueError(
+                    f"{subj} must contain exactly 2 solution records, got {len(rows)}"
+                )
         return self
 
     def to_solution_dict(self) -> dict[str, Any]:

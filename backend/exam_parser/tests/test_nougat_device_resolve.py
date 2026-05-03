@@ -31,6 +31,8 @@ def test_resolve_cuda_raises_when_unavailable() -> None:
     """Explicit cuda should fail if CUDA is not available."""
     with patch("exam_parser.parsers.nougat_local_gpu.torch") as mock_torch:
         mock_torch.cuda.is_available.return_value = False
+        mock_torch.__version__ = "test"
+        mock_torch.version.cuda = None
         with pytest.raises(RuntimeError, match="CUDA"):
             resolve_nougat_device("cuda")
 

@@ -220,7 +220,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<int>(
-                    initialValue: _clasa,
+                    value: _clasa,
                     decoration: const InputDecoration(
                       labelText: 'Clasa',
                       border: OutlineInputBorder(),

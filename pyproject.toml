@@ -37,7 +37,7 @@ pipeline_ui = { ref = "exam_parser_ui" }
 ai = "uvicorn ai_backend.main:app --reload --reload-dir backend/ai_backend --reload-exclude '**/__pycache__/**' --reload-exclude '**/*.pyc' --reload-delay 0.5 --host 0.0.0.0 --port 8080"
 # Copy root .env into flutter_app so Flutter uses the same config as ai_backend
 copy_env_flutter = "python -c \"import shutil; from pathlib import Path; s=Path('.env'); d=Path('flutter_app/.env'); shutil.copy(s,d) if s.exists() else None\""
-flutter_run = { shell = "flutter run -d chrome", cwd = "flutter_app" }
+flutter_run = { shell = "flutter run -d web-server", cwd = "flutter_app" }
 ui = ["copy_env_flutter", "flutter_run"]
 # --ignore-health-checks: allows start on Docker Desktop when vector container is unhealthy (connection refused to Docker socket)
 supabase = { shell = "npx supabase start --ignore-health-check" }

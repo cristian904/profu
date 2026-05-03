@@ -13,7 +13,8 @@ dependencies:
   http: ^1.1.0
   cupertino_icons: ^1.0.6
   flutter_markdown: ^0.7.0
-  flutter_math_fork: ^0.7.2
+  # 0.7.4 targets Flutter 3.32+ (RenderObjectWithLayoutCallbackMixin). Stay below on 3.27.x.
+  flutter_math_fork: ">=0.7.3 <0.7.4"
   fl_chart: ^0.69.0
   math_expressions: ^2.6.0
   file_picker: ^8.0.0

@@ -56,6 +56,7 @@ async def run(
         pending = [p for p in pdfs if not checkpoint.is_file_done(STEP_NAME, p.name)]
         logger.info(
             f"[{STEP_NAME}] model={settings.nougat_model_id}, device_setting={settings.nougat_device}, "
+            f"timeout={settings.nougat_pdf_timeout_seconds}s, "
             f"{len(pdfs)} PDFs total, {len(pdfs) - len(pending)} already extracted, "
             f"{len(pending)} to process"
         )
@@ -68,12 +69,45 @@ async def run(
                 logger.info(f"[{STEP_NAME}] [DRY RUN] Would run local Nougat on: {p.name}")
             return
 
+        extracted_count = 0
+        skipped_count = 0
         for pdf in pending:
             logger.info(f"[{STEP_NAME}] === Extracting {pdf.name} ===")
-            await _extract_one(pdf, dirs.problems_vision, checkpoint, logger)
+            try:
+                await asyncio.wait_for(
+                    _extract_one(pdf, dirs.problems_vision, checkpoint, logger),
+                    timeout=settings.nougat_pdf_timeout_seconds,
+                )
+                extracted_count += 1
+            except TimeoutError:
+                logger.warning(
+                    f"[{STEP_NAME}] Skipping {pdf.name} after timeout "
+                    f"({settings.nougat_pdf_timeout_seconds}s)"
+                )
+                # Mark skipped timeout files as done so resume does not reprocess them.
+                checkpoint.mark_file_done(STEP_NAME, pdf.name)
+                skipped_count += 1
+                try:
+                    release_nougat_gpu_resources(log=logger.info)
+                    logger.info(
+                        f"[{STEP_NAME}] GPU cache reset after timeout; next PDF will retry "
+                        f"on configured device={settings.nougat_device}"
+                    )
+                except Exception as release_exc:
+                    logger.error(release_exc, traceback=traceback.format_exc())
+            except Exception as exc:
+                # Keep pipeline moving: a bad PDF should not abort the full run.
+                logger.warning(
+                    f"[{STEP_NAME}] Skipping {pdf.name} after extraction failure: {exc}"
+                )
+                # Mark skipped failed files as done so resume does not reprocess them.
+                checkpoint.mark_file_done(STEP_NAME, pdf.name)
+                skipped_count += 1
 
         checkpoint.mark_step_done(STEP_NAME)
-        logger.info(f"[{STEP_NAME}] Step complete")
+        logger.info(
+            f"[{STEP_NAME}] Step complete — extracted: {extracted_count}, skipped: {skipped_count}"
+        )
     finally:
         try:
             release_nougat_gpu_resources(log=logger.info)

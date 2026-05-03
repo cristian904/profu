@@ -10,6 +10,7 @@ Run from repo root:
 from __future__ import annotations
 
 import json
+import os
 import queue
 import re
 import subprocess
@@ -58,6 +59,7 @@ _PIPELINE_DIR  = Path(__file__).resolve().parent          # pipeline/
 _EXAM_PARSER   = _PIPELINE_DIR.parent                     # exam_parser/
 RUNS_DIR       = _EXAM_PARSER / "runs"
 REPO_ROOT      = _EXAM_PARSER.parent.parent               # profu/
+RUN_INPUTS_FILENAME = "ui_last_inputs.json"
 
 ANSI_RE        = re.compile(r"\x1b\[[0-9;]*m")
 STEP_RUN_RE    = re.compile(r"Running (?:step|parallel steps)[:\s]+(.+?)(?:\s*===|$)")
@@ -84,9 +86,13 @@ def _init() -> None:
         "running_steps":   set(),
         "current_step":    None,
         "selected_step":   None,
+        "selected_step_pinned": False,
         "pipeline_status": "idle",      # idle | running | failed | done
         "failed_step":     None,
         "last_error":      None,
+        "_nougat_device":  "cuda",
+        "_run_name_seen":  "",
+        "_run_inputs_cache": {},
         "step_progress":   {s: {"status": "pending", "completed": 0, "total": 0, "fraction": 0.0}
                             for s in STEP_NAMES},
     }
@@ -98,6 +104,89 @@ def _init() -> None:
 
 _init()
 
+
+def _run_inputs_path(run_name: str) -> Path:
+    """Return path of persisted UI input snapshot for a given run."""
+    return RUNS_DIR / run_name / RUN_INPUTS_FILENAME
+
+
+def _load_saved_run_inputs(run_name: str) -> dict | None:
+    """Load saved UI paths for a run, from memory cache or run-local JSON file."""
+    if not run_name:
+        return None
+
+    cache = st.session_state.get("_run_inputs_cache", {})
+    if isinstance(cache, dict) and run_name in cache:
+        cached = cache.get(run_name)
+        if isinstance(cached, dict):
+            return cached
+
+    path = _run_inputs_path(run_name)
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            return None
+        if not isinstance(st.session_state.get("_run_inputs_cache"), dict):
+            st.session_state._run_inputs_cache = {}
+        st.session_state._run_inputs_cache[run_name] = payload
+        return payload
+    except Exception as exc:
+        print(
+            f"[exam_parser UI] Failed to load saved run inputs for {run_name}: {exc}",
+            file=sys.stderr,
+        )
+        return None
+
+
+def _save_run_inputs(run_name: str, problems_dir: str, solutions_dir: str, source: str) -> None:
+    """Persist UI input values for auto-fill when the same run name is used later."""
+    if not run_name:
+        return
+    payload = {
+        "problems_dir": problems_dir,
+        "solutions_dir": solutions_dir,
+        "source": source,
+    }
+    try:
+        path = _run_inputs_path(run_name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        if not isinstance(st.session_state.get("_run_inputs_cache"), dict):
+            st.session_state._run_inputs_cache = {}
+        st.session_state._run_inputs_cache[run_name] = payload
+    except Exception as exc:
+        print(
+            f"[exam_parser UI] Failed to save run inputs for {run_name}: {exc}",
+            file=sys.stderr,
+        )
+
+
+def _maybe_autofill_paths_from_run_name() -> None:
+    """When run name changes, auto-fill problems/solutions paths from saved run inputs."""
+    run_name = str(st.session_state.get("_run_name", "")).strip()
+    seen = str(st.session_state.get("_run_name_seen", ""))
+    if run_name == seen:
+        return
+    st.session_state._run_name_seen = run_name
+    if not run_name:
+        return
+
+    saved = _load_saved_run_inputs(run_name)
+    if not isinstance(saved, dict):
+        return
+
+    prob = saved.get("problems_dir")
+    sol = saved.get("solutions_dir")
+    src = saved.get("source")
+    if isinstance(prob, str) and prob.strip():
+        st.session_state._prob_dir = prob
+    if isinstance(sol, str) and sol.strip():
+        st.session_state._sol_dir = sol
+    if isinstance(src, str) and src in ("var", "exam", "test"):
+        st.session_state._source = src
+
 # ── Log helpers ───────────────────────────────────────────────────────────────
 
 def _strip_ansi(s: str) -> str:
@@ -105,6 +194,7 @@ def _strip_ansi(s: str) -> str:
 
 
 def _parse_line(raw: str) -> dict:
+    """Parse one stdout line into a normalized log entry used by the UI."""
     s = _strip_ansi(raw).strip()
     if s.startswith("{"):
         try:
@@ -115,7 +205,67 @@ def _parse_line(raw: str) -> dict:
             }
         except json.JSONDecodeError:
             pass
+    # Heuristic fallback so Python tracebacks and non-JSON fatal lines
+    # are still surfaced as errors in the UI banner.
+    if (
+        "traceback" in s.lower()
+        or s.startswith("Error:")
+        or s.startswith("Exception:")
+        or "CRITICAL" in s
+    ):
+        return {"level": "ERROR", "message": s}
     return {"level": "INFO", "message": s}
+
+
+def _build_error_excerpt_from_recent_logs(max_lines: int = 30) -> str | None:
+    """Build a concise multiline error excerpt from recent pipeline logs."""
+    recent_logs = st.session_state.all_logs[-80:]
+    if not recent_logs:
+        return None
+
+    # Try to capture the most recent traceback block and the exception tail.
+    traceback_start_index = None
+    for idx in range(len(recent_logs) - 1, -1, -1):
+        msg = str(recent_logs[idx].get("message", "")).strip()
+        if "traceback (most recent call last):" in msg.lower():
+            traceback_start_index = idx
+            break
+
+    if traceback_start_index is not None:
+        traceback_lines: list[str] = []
+        for log_entry in recent_logs[traceback_start_index:]:
+            msg = str(log_entry.get("message", "")).rstrip()
+            if msg:
+                traceback_lines.append(msg)
+            if len(traceback_lines) >= max_lines:
+                break
+        if traceback_lines:
+            return "\n".join(traceback_lines)
+
+    # Fallback: return the latest non-empty lines.
+    fallback_lines: list[str] = []
+    for log_entry in reversed(recent_logs):
+        msg = str(log_entry.get("message", "")).strip()
+        if msg:
+            fallback_lines.append(msg)
+        if len(fallback_lines) >= max_lines:
+            break
+    if not fallback_lines:
+        return None
+    fallback_lines.reverse()
+    return "\n".join(fallback_lines)
+
+
+def _is_unhelpful_error_message(msg: str | None) -> bool:
+    """Return True for placeholder-like errors that should be replaced with richer excerpts."""
+    if not msg:
+        return True
+    m = msg.strip().lower()
+    return (
+        m.startswith("traceback (most recent call last):")
+        or "without a structured error log" in m
+        or m.startswith("pipeline process exited with code")
+    )
 
 
 def _detect_steps(msg: str) -> list[str]:
@@ -178,6 +328,7 @@ def _reader(proc: subprocess.Popen, q: queue.Queue) -> None:
 
 
 def _drain() -> None:
+    """Consume process output queue and update timeline, logs, and failure state."""
     q: queue.Queue = st.session_state._q
     while True:
         try:
@@ -189,6 +340,19 @@ def _drain() -> None:
             st.session_state.proc = None
             if data != 0:
                 st.session_state.pipeline_status = "failed"
+                # On failure, always try to enrich the banner with recent traceback lines.
+                # This also replaces placeholder errors like bare "Traceback..." headers.
+                fallback_error = _build_error_excerpt_from_recent_logs()
+                if fallback_error and _is_unhelpful_error_message(st.session_state.last_error):
+                    st.session_state.last_error = fallback_error
+                if st.session_state.last_error is None:
+                    st.session_state.last_error = (
+                        f"Pipeline process exited with code {data} without a structured error log."
+                    )
+                print(
+                    f"[exam_parser UI] Non-zero exit ({data}) with error excerpt: {st.session_state.last_error}",
+                    file=sys.stderr,
+                )
                 if st.session_state.failed_step is None:
                     cur = st.session_state.current_step
                     if isinstance(cur, str) and cur in STEP_NAMES:
@@ -214,8 +378,11 @@ def _drain() -> None:
         if detected:
             st.session_state.running_steps = set(detected)
             st.session_state.current_step = detected[0]
-            # auto-follow if user hasn't clicked a step manually
-            if st.session_state.pipeline_status == "running":
+            # Auto-follow only when user did not pin a timeline step.
+            if (
+                st.session_state.pipeline_status == "running"
+                and not st.session_state.selected_step_pinned
+            ):
                 st.session_state.selected_step = detected[0]
 
         # "Finished parallel steps" → clear running
@@ -235,8 +402,18 @@ def _drain() -> None:
             if len(logs) > MAX_LOG_LINES:
                 del logs[0]
         if level == "ERROR":
-            st.session_state.last_error = msg
-            _stop_pipeline_on_logged_error(msg)
+            is_traceback_header = "traceback (most recent call last):" in msg.lower()
+            if is_traceback_header:
+                # Do not terminate immediately on traceback header, otherwise
+                # we kill the process before exception lines are emitted.
+                st.session_state.last_error = _build_error_excerpt_from_recent_logs() or msg
+                print(
+                    "[exam_parser UI] Traceback header detected; waiting for full traceback before process termination.",
+                    file=sys.stderr,
+                )
+            else:
+                st.session_state.last_error = msg
+                _stop_pipeline_on_logged_error(msg)
 
 # ── Checkpoint / progress ─────────────────────────────────────────────────────
 
@@ -437,6 +614,7 @@ def _consume_tl_step_query() -> None:
     val = raw[0] if isinstance(raw, (list, tuple)) else str(raw)
     if val in STEP_NAMES:
         st.session_state.selected_step = val
+        st.session_state.selected_step_pinned = True
     try:
         del qp["tl_step"]
     except KeyError:
@@ -501,6 +679,7 @@ def _launch(
     overwrite: bool,
     start_from: str | None,
 ) -> None:
+    """Start the pipeline CLI subprocess and stream its logs to the dashboard."""
     cmd = [
         sys.executable, "-m", "exam_parser.pipeline.cli",
         "--run-name", run_name,
@@ -528,19 +707,40 @@ def _launch(
     st.session_state.failed_step     = None
     st.session_state.last_error      = None
     st.session_state.pipeline_status = "running"
-    st.session_state.selected_step   = start_from or STEP_NAMES[0]
+    # Default to "All Steps" logs until an actual running step is detected.
+    st.session_state.selected_step   = None
+    st.session_state.selected_step_pinned = False
     st.session_state._q              = queue.Queue()
 
-    proc = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        cwd=str(REPO_ROOT),
-    )
-    st.session_state.proc = proc
-    threading.Thread(target=_reader, args=(proc, st.session_state._q), daemon=True).start()
+    try:
+        _save_run_inputs(run_name, prob, sol, source)
+        launch_env = os.environ.copy()
+        launch_env["NOUGAT_DEVICE"] = st.session_state.get("_nougat_device", "cuda")
+        print(f"[exam_parser UI] Launching pipeline command: {' '.join(cmd)}", file=sys.stderr)
+        print(
+            "[exam_parser UI] "
+            f"NOUGAT_DEVICE={launch_env['NOUGAT_DEVICE']}, "
+            f"CUDA_VISIBLE_DEVICES={launch_env.get('CUDA_VISIBLE_DEVICES', '<unset>')}, "
+            f"PYTORCH_NVML_BASED_CUDA_CHECK={launch_env.get('PYTORCH_NVML_BASED_CUDA_CHECK', '<unset>')}",
+            file=sys.stderr,
+        )
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            cwd=str(REPO_ROOT),
+            env=launch_env,
+        )
+        st.session_state.proc = proc
+        threading.Thread(target=_reader, args=(proc, st.session_state._q), daemon=True).start()
+    except Exception as exc:
+        error_message = f"Failed to launch pipeline subprocess: {exc}"
+        print(f"[exam_parser UI] {error_message}", file=sys.stderr)
+        st.session_state.pipeline_status = "failed"
+        st.session_state.last_error = error_message
+        st.session_state.proc = None
 
 
 def _folder_picker(label: str, key: str, placeholder: str) -> None:
@@ -598,6 +798,7 @@ def _folder_picker(label: str, key: str, placeholder: str) -> None:
 def main() -> None:
     st.markdown(CSS, unsafe_allow_html=True)
     _consume_tl_step_query()
+    _maybe_autofill_paths_from_run_name()
 
     # Drain queue + refresh progress before rendering
     _drain()
@@ -625,7 +826,8 @@ def main() -> None:
 
     # ── Error banner ──────────────────────────────────────────────────────────
     if status == "failed" and st.session_state.last_error:
-        err_msg = str(st.session_state.last_error)[:400]
+        raw_error = str(st.session_state.last_error)[:1400]
+        err_msg = raw_error.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br>")
         st.markdown(
             f'<div class="err-banner">'
             f'<strong>⛔ Pipeline Failed</strong>'
@@ -653,12 +855,18 @@ def main() -> None:
         with c6:
             st.checkbox("Overwrite", key="_overwrite")
 
+        st.selectbox(
+            "Nougat Device",
+            ["auto", "cuda", "cuda:0", "mps", "cpu"],
+            key="_nougat_device",
+            help="Select device for Nougat extraction. Default is cuda (fail-fast if GPU is unavailable).",
+        )
         st.markdown("**Ollama (markdown → JSON)**")
         st.caption(
             f"Model fix: **{DEFAULT_OLLAMA_MODEL_ID}**. Rulează `ollama pull {DEFAULT_OLLAMA_MODEL_ID}` dacă nu e instalat."
         )
         st.caption(
-            "Extragere PDF: **Nougat** local (`NOUGAT_DEVICE=auto` → CUDA, MPS sau CPU). "
+            "Extragere PDF: **Nougat** local (`NOUGAT_DEVICE=cuda` implicit, fail-fast dacă GPU nu e disponibil). "
             "Index vectori: `gemini-embedding-001`."
         )
 
@@ -721,6 +929,11 @@ def main() -> None:
     # ── Timeline ─────────────────────────────────────────────────────────────
     selected = st.session_state.selected_step
     st.caption("Click a step (icon or label) to show its logs below.")
+    if selected and st.session_state.selected_step_pinned:
+        if st.button("Unpin step selection", key="unpin_step_selection"):
+            st.session_state.selected_step_pinned = False
+            st.session_state.selected_step = st.session_state.current_step
+            st.rerun()
     # ``st.html`` keeps ``<a href="?tl_step=...">``; ``st.markdown`` may strip links.
     st.html(_timeline_html(progress, selected))
 
@@ -768,7 +981,19 @@ def main() -> None:
             st.rerun()
 
     logs = st.session_state.step_logs.get(selected, []) if selected else st.session_state.all_logs
+    if selected and not logs and st.session_state.all_logs:
+        # If step-specific logs are empty (e.g. failure before first step), show global logs.
+        logs = st.session_state.all_logs
     st.markdown(_log_html(logs), unsafe_allow_html=True)
+
+    issue_logs = [
+        entry
+        for entry in st.session_state.all_logs
+        if entry.get("level") in ("WARNING", "ERROR")
+    ]
+    if issue_logs:
+        st.markdown("**Recent Issues**")
+        st.markdown(_log_html(issue_logs[-80:]), unsafe_allow_html=True)
 
     # ── Auto-refresh while pipeline is running ────────────────────────────────
     if is_run:

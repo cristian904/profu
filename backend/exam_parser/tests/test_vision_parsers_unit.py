@@ -47,7 +47,7 @@ def test_parse_json_from_response_strips_fence() -> None:
 
 def test_validate_and_normalize_single_key() -> None:
     """Single s-key dict passes through structure."""
-    data = {"s1": [{"statement": "a", "choices": []}]}
+    data = {"s1": [{"statement": "a"}]}
     out = validate_and_normalize_problems(data, "s1")
     assert list(out.keys()) == ["s1"]
 
@@ -69,11 +69,87 @@ def test_extract_structured_problems_from_markdown_empty_raises() -> None:
         )
 
 
-def test_extract_structured_problems_from_markdown_no_subject_raises() -> None:
-    """Missing SUBIECTUL header raises before Ollama."""
-    with pytest.raises(ValueError, match="Subiect I/II/III"):
-        extract_structured_problems_from_markdown(
+def test_extract_structured_problems_from_markdown_no_subject_uses_llm_output() -> None:
+    """Missing source header should rely on LLM output, not deterministic pre-check."""
+    from exam_parser.parsers import ollama_structured
+    def _fake_ollama_chat_text(
+        base_url: str,
+        model: str,
+        user_content: str,
+        *,
+        timeout_sec: float = 900.0,
+        request_json_format: bool = False,
+    ) -> str:
+        assert request_json_format is True
+        return """{
+  "s1": [
+    {"number": 1, "statement": "x + 1 = 2", "items": []},
+    {"number": 2, "statement": "p2", "items": []},
+    {"number": 3, "statement": "p3", "items": []},
+    {"number": 4, "statement": "p4", "items": []},
+    {"number": 5, "statement": "p5", "items": []},
+    {"number": 6, "statement": "p6", "items": []}
+  ]
+}"""
+
+    original = ollama_structured.ollama_chat_text
+    ollama_structured.ollama_chat_text = _fake_ollama_chat_text
+    try:
+        out = extract_structured_problems_from_markdown(
             "# Only a title\n",
             base_url="http://127.0.0.1:11434",
             model="m",
         )
+    finally:
+        ollama_structured.ollama_chat_text = original
+
+    assert "s1" in out
+    assert len(out["s1"]) == 6
+
+
+def test_extract_structured_problems_from_markdown_includes_source_stem_subject_hint() -> None:
+    """When source stem has _sN suffix, prompt should include a subject hint."""
+    from exam_parser.parsers import ollama_structured
+
+    captured_prompt: dict[str, str] = {"value": ""}
+
+    def _fake_ollama_chat_text(
+        base_url: str,
+        model: str,
+        user_content: str,
+        *,
+        timeout_sec: float = 900.0,
+        request_json_format: bool = False,
+    ) -> str:
+        captured_prompt["value"] = user_content
+        assert request_json_format is True
+        return """{
+  "s2": [
+    {
+      "number": 1,
+      "statement": "x + 1 = 2",
+      "items": ["a) i", "b) j", "c) k"]
+    },
+    {
+      "number": 2,
+      "statement": "y",
+      "items": ["a) i2", "b) j2", "c) k2"]
+    }
+  ]
+}"""
+
+    original = ollama_structured.ollama_chat_text
+    ollama_structured.ollama_chat_text = _fake_ollama_chat_text
+    try:
+        out = extract_structured_problems_from_markdown(
+            "# Exercitii\n",
+            base_url="http://127.0.0.1:11434",
+            model="m",
+            source_stem="2009_M1_v1_s2",
+        )
+    finally:
+        ollama_structured.ollama_chat_text = original
+
+    assert "SOURCE SUBJECT CONSTRAINT (from filename): s2" in captured_prompt["value"]
+    assert "You MUST use this exact subject key in output." in captured_prompt["value"]
+    assert "s2" in out

@@ -33,6 +33,36 @@ STEPS = [
 ]
 
 
+def _input_pdfs_for_step(step_name: str, config: PipelineConfig) -> list[str]:
+    """Return expected input PDF filenames for checkpointed file-based steps."""
+    if step_name in ("extract_problems", "parse_problems"):
+        return sorted(p.name for p in config.problems_dir.glob("*.pdf"))
+    if step_name in ("extract_solutions", "parse_solutions"):
+        return sorted(p.name for p in config.solutions_dir.glob("*.pdf"))
+    return []
+
+
+def _step_has_checkpoint_coverage_gaps(
+    step_name: str,
+    config: PipelineConfig,
+    checkpoint: Checkpoint,
+) -> bool:
+    """
+    Return True when a step marked done still has input files not marked done.
+
+    This protects resume behavior from stale or partially written checkpoint step
+    statuses by preferring file-level completeness for file-based steps.
+    """
+    expected_inputs = _input_pdfs_for_step(step_name, config)
+    if not expected_inputs:
+        return False
+
+    for filename in expected_inputs:
+        if not checkpoint.is_file_done(step_name, filename):
+            return True
+    return False
+
+
 def _apply_model_overrides(config: PipelineConfig) -> dict[str, str]:
     """
     Temporarily patch global pipeline ``settings`` with per-run Ollama model id.
@@ -102,8 +132,14 @@ async def run_pipeline(config: PipelineConfig) -> None:
 
         for step_name, step_module in STEPS[start_idx:]:
             if checkpoint.is_step_done(step_name) and not config.overwrite:
-                logger.info(f"Skipping step '{step_name}' — already done")
-                continue
+                if _step_has_checkpoint_coverage_gaps(step_name, config, checkpoint):
+                    logger.warning(
+                        f"Step '{step_name}' was marked done but has pending files in checkpoint; "
+                        "running step to recover."
+                    )
+                else:
+                    logger.info(f"Skipping step '{step_name}' — already done")
+                    continue
 
             logger.info(f"=== Running step: {step_name} ===")
             await step_module.run(config, dirs, checkpoint, logger)

@@ -1,5 +1,5 @@
 """
-Run ``facebook/nougat-small`` locally for PDF → markdown (GPU via CUDA or Apple MPS when available).
+Run ``facebook/nougat-base`` locally for PDF → markdown (GPU via CUDA or Apple MPS when available).
 """
 from __future__ import annotations
 
@@ -52,9 +52,13 @@ def resolve_nougat_device(device_setting: str) -> str:
         return "mps"
     if s == "cuda" or s.startswith("cuda:"):
         if not torch.cuda.is_available():
+            # Provide detailed diagnostics to make CUDA visibility issues debuggable in UI logs.
+            cuda_visible = __import__("os").environ.get("CUDA_VISIBLE_DEVICES", "<unset>")
             raise RuntimeError(
                 "NOUGAT_DEVICE requests CUDA but CUDA is not available. "
-                "Install a CUDA-enabled PyTorch build, or set NOUGAT_DEVICE=auto|mps|cpu."
+                "Install a CUDA-enabled PyTorch build, or set NOUGAT_DEVICE=auto|mps|cpu. "
+                f"Runtime: torch={torch.__version__}, torch.version.cuda={torch.version.cuda}, "
+                f"cuda_available={torch.cuda.is_available()}, CUDA_VISIBLE_DEVICES={cuda_visible}."
             )
         return "cuda" if s == "cuda" else s
     raise ValueError(f"Unknown NOUGAT_DEVICE value: {device_setting!r}")
@@ -105,6 +109,73 @@ def _get_processor_and_model(model_id: str, device: str, log: Any) -> tuple[Any,
         return _cached[cache_key]
 
 
+def _is_retryable_cuda_nougat_error(exc: Exception) -> bool:
+    """
+    Return True for known CUDA runtime failures where retrying on CPU is safer.
+
+    This currently targets PyTorch CUDA indexing assertions observed during
+    ``model.generate(...)`` with Nougat on some driver/runtime combinations.
+    """
+    msg = str(exc)
+    lowered = msg.lower()
+    return (
+        "indexselectsmallindex" in lowered
+        or "srcindex < srcselectdimsize" in lowered
+        or "device-side assert triggered" in lowered
+        or ("cuda" in lowered and "assert" in lowered)
+    )
+
+
+def _should_retry_pdf_on_cpu_after_cuda_failure(device_setting: str, exc: Exception) -> bool:
+    """
+    Return True when this PDF run should retry on CPU after a CUDA runtime failure.
+
+    The retry policy is intentionally conservative:
+    - only for known retryable CUDA runtime assertions;
+    - only when the configured/resolved device for the run is CUDA.
+    """
+    if not _is_retryable_cuda_nougat_error(exc):
+        return False
+
+    try:
+        resolved_device = resolve_nougat_device(device_setting)
+    except Exception:
+        # Keep behavior safe if resolution itself fails for any reason.
+        return False
+
+    return resolved_device.startswith("cuda")
+
+
+def _safe_release_nougat_resources(feature_logger: Any | None = None) -> None:
+    """
+    Release cached Nougat resources and log failures without raising.
+
+    Args:
+        feature_logger: Optional feature logger used by pipeline steps.
+    """
+    try:
+        release_nougat_gpu_resources(
+            log=feature_logger.info if feature_logger is not None else print
+        )
+    except Exception as release_exc:
+        if feature_logger is not None:
+            feature_logger.error(release_exc, traceback=traceback.format_exc())
+
+
+def _write_text_atomically(path: Path, text: str) -> None:
+    """
+    Atomically write text to destination path via temporary sibling file.
+
+    Args:
+        path: Final markdown output path.
+        text: Markdown body to persist.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".md.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
 def pdf_to_markdown_local(
     pdf_path: Path,
     *,
@@ -117,7 +188,7 @@ def pdf_to_markdown_local(
 
     Args:
         pdf_path: Path to the PDF.
-        model_id: Hugging Face model id (default ``facebook/nougat-small``).
+        model_id: Hugging Face model id (default ``facebook/nougat-base``).
         device_setting: ``auto``, ``cuda``, ``mps``, or ``cpu``.
         feature_logger: Optional ``FeatureLogger`` for progress lines.
 
@@ -187,6 +258,7 @@ def write_markdown_local_gpu(
     Raises:
         Exception: Logs traceback via *feature_logger* when present, then re-raises.
     """
+    should_unload_after_cpu_fallback = False
     try:
         md_text = pdf_to_markdown_local(
             pdf_path,
@@ -194,14 +266,50 @@ def write_markdown_local_gpu(
             device_setting=device_setting,
             feature_logger=feature_logger,
         )
-        md_out.parent.mkdir(parents=True, exist_ok=True)
-        tmp = md_out.with_suffix(".md.tmp")
-        tmp.write_text(md_text, encoding="utf-8")
-        tmp.replace(md_out)
     except Exception as exc:
+        # If CUDA generation fails with a known runtime assertion, retry on CPU
+        # so the run can continue and produce output for the current PDF.
+        if _should_retry_pdf_on_cpu_after_cuda_failure(device_setting, exc):
+            if feature_logger is not None:
+                feature_logger.warning(
+                    "[nougat_local] CUDA runtime assertion detected; retrying this PDF on CPU. "
+                    "Consider updating/downgrading PyTorch+CUDA if this repeats."
+                )
+                feature_logger.warning(
+                    f"[nougat_local] Recoverable CUDA error details: {exc}"
+                )
+                feature_logger.warning(
+                    "[nougat_local] Resetting cached Nougat GPU resources before CPU retry "
+                    "to allow clean CUDA re-initialization on subsequent PDFs."
+                )
+            _safe_release_nougat_resources(feature_logger)
+            try:
+                md_text = pdf_to_markdown_local(
+                    pdf_path,
+                    model_id=model_id,
+                    device_setting="cpu",
+                    feature_logger=feature_logger,
+                )
+                should_unload_after_cpu_fallback = True
+            except Exception as retry_exc:
+                if feature_logger is not None:
+                    feature_logger.error(retry_exc, traceback=traceback.format_exc())
+                raise
+        else:
+            if feature_logger is not None:
+                feature_logger.error(exc, traceback=traceback.format_exc())
+            raise
+
+    _write_text_atomically(md_out, md_text)
+    if should_unload_after_cpu_fallback:
+        # Do not keep CPU fallback model resident between PDFs.
+        # This forces a clean model reload on the next file.
+        _safe_release_nougat_resources(feature_logger)
         if feature_logger is not None:
-            feature_logger.error(exc, traceback=traceback.format_exc())
-        raise
+            feature_logger.info(
+                "[nougat_local] CPU fallback model unloaded after PDF completion; "
+                "Nougat will reload for the next PDF."
+            )
 
 
 def release_nougat_gpu_resources(log: Callable[[str], None] | None = None) -> None:
@@ -236,9 +344,16 @@ def release_nougat_gpu_resources(log: Callable[[str], None] | None = None) -> No
     try:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
-            torch.cuda.synchronize()
     except Exception as exc:
-        emit(f"[nougat_local] CUDA cache clear failed: {exc}")
+        # Device-side asserts poison CUDA context; cleanup may fail until restart.
+        msg = str(exc).lower()
+        if "device-side assert triggered" in msg:
+            emit(
+                "[nougat_local] CUDA cache clear skipped due to poisoned CUDA context "
+                "(device-side assert). Restart process to fully reset CUDA state."
+            )
+        else:
+            emit(f"[nougat_local] CUDA cache clear failed: {exc}")
     try:
         if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
             torch.mps.empty_cache()

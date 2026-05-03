@@ -19,7 +19,6 @@ from pathlib import Path
 
 from exam_parser.pipeline.config import STEP_NAMES, PipelineConfig
 from exam_parser.pipeline.model_options import ollama_ids_for_argparse
-from exam_parser.pipeline.runner import run_pipeline
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -106,6 +105,26 @@ def _register_nougat_gpu_cleanup_on_signals() -> None:
             log.debug("Skipping signal %s registration (not main thread or unsupported)", sig)
 
 
+def _log_torch_runtime_diagnostics(log: logging.Logger) -> None:
+    """Log runtime diagnostics for PyTorch/CUDA visibility in this CLI process."""
+    try:
+        import torch
+
+        log.info(
+            "Runtime diagnostics: python=%s, torch=%s, torch_cuda=%s, cuda_available=%s, cuda_device_count=%s, CUDA_VISIBLE_DEVICES=%s",
+            sys.executable,
+            torch.__version__,
+            torch.version.cuda,
+            torch.cuda.is_available(),
+            torch.cuda.device_count() if torch.cuda.is_available() else 0,
+            os.environ.get("CUDA_VISIBLE_DEVICES", "<unset>"),
+        )
+        if torch.cuda.is_available():
+            log.info("Runtime diagnostics: cuda_device_0=%s", torch.cuda.get_device_name(0))
+    except Exception:
+        log.exception("Failed to collect torch/CUDA runtime diagnostics")
+
+
 def main() -> None:
     """Parse CLI args, build pipeline config, and run the async pipeline entrypoint."""
     # Set up console logging for profu_logging
@@ -117,6 +136,7 @@ def main() -> None:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(ColoredJsonFormatter("%(message)s"))
         root_logger.addHandler(handler)
+    log = root_logger
 
     parser = _build_parser()
     args = parser.parse_args()
@@ -135,11 +155,19 @@ def main() -> None:
     _register_nougat_gpu_cleanup_on_signals()
 
     try:
+        # Import lazily so startup/import errors (e.g. settings validation)
+        # are logged through the JSON logger and surfaced in the Streamlit UI.
+        from exam_parser.pipeline.runner import run_pipeline
+
+        _log_torch_runtime_diagnostics(log)
+        log.info("Starting exam parser pipeline run")
         asyncio.run(run_pipeline(config))
     except KeyboardInterrupt:
+        log.warning("Pipeline interrupted by user")
         raise
     except Exception:
-        logging.getLogger(__name__).exception("Pipeline stopped after an error in a step")
+        # Always log through the JSON logger consumed by the Streamlit UI.
+        log.exception("Pipeline stopped after an error in a step")
         sys.exit(1)
 
 

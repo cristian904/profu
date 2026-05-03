@@ -1,6 +1,9 @@
 """Configuration managed by pydantic-settings."""
 from __future__ import annotations
 
+from functools import lru_cache
+from typing import Any
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,12 +20,14 @@ class PipelineSettings(BaseSettings):
 
     # Ollama — markdown → JSON (parse_problems / parse_solutions)
     ollama_base_url: str = "http://127.0.0.1:11434"
-    ollama_model: str = "llama3.1:8b"
+    ollama_model: str = "qwen2.5-coder:7b"
 
     # Nougat PDF → markdown (local only; weights downloaded from Hugging Face Hub on first run)
-    nougat_model_id: str = "facebook/nougat-small"
-    # auto | cuda | cuda:N | mps | cpu — ``auto`` picks CUDA, then Apple MPS, then CPU
-    nougat_device: str = "auto"
+    nougat_model_id: str = "facebook/nougat-base"
+    # auto | cuda | cuda:N | mps | cpu — ``cuda`` enforces GPU and fails fast if unavailable
+    nougat_device: str = "cuda"
+    # Per-PDF extraction timeout in seconds. Prevents one stuck file from blocking the step.
+    nougat_pdf_timeout_seconds: int = 120
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -31,4 +36,22 @@ class PipelineSettings(BaseSettings):
     )
 
 
-settings = PipelineSettings()
+@lru_cache(maxsize=1)
+def get_pipeline_settings() -> PipelineSettings:
+    """
+    Load settings once per process.
+
+    Kept separate from module import so tests can import ``PipelineSettings``
+    without required environment variables being set.
+    """
+    return PipelineSettings()
+
+
+class _LazyPipelineSettings:
+    """Proxy that defers ``PipelineSettings()`` until first attribute access."""
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(get_pipeline_settings(), name)
+
+
+settings = _LazyPipelineSettings()
